@@ -356,11 +356,23 @@ function evaluate(ctx, options = {}) {
    * file already existed before this write, but resolving that shells out
    * to git — so it is computed at most once here, and only when a candidate
    * rule could actually use the answer. A shell-only context (`filePath`
-   * empty) or a candidate set with no `newCodeOnly` rule in it never pays
-   * for the shell-out at all.
+   * empty) or a candidate set with no rule that wants the answer in it never
+   * pays for the shell-out at all.
+   *
+   * Two kinds of rule want it, and they point in opposite directions. A
+   * `newCodeOnly` rule never reads `changeScope` itself — step 7 applies it
+   * on the rule's behalf, softening a structural expectation for code that
+   * predates the standard. A `readsChangeScope` rule reads
+   * `ctx.changeScope` in its own `evaluate` and decides for itself, which is
+   * what a rule needs when pre-existence is the very thing that makes a
+   * write wrong rather than the thing that excuses it
+   * (`guards/immutable-migrations.js`). Declaring `readsChangeScope` buys
+   * only the computed value; it triggers no softening of its own.
    */
   const classifyFn = typeof options.classifyChange === "function" ? options.classifyChange : classifyChange;
-  const needsChangeScope = Boolean(presetCtx.filePath) && candidates.some((rule) => rule.newCodeOnly === true);
+  const needsChangeScope =
+    Boolean(presetCtx.filePath) &&
+    candidates.some((rule) => rule.newCodeOnly === true || rule.readsChangeScope === true);
   const changeScope = needsChangeScope ? classifyFn(presetCtx.filePath, presetCtx.git) : null;
   const effectiveCtx = { ...presetCtx, changeScope };
 

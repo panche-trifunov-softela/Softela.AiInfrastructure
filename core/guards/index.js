@@ -52,6 +52,9 @@ function validate(mod, expectedId) {
   if (mod.newCodeOnly !== undefined && typeof mod.newCodeOnly !== "boolean") {
     return "newCodeOnly must be a boolean when present";
   }
+  if (mod.readsChangeScope !== undefined && typeof mod.readsChangeScope !== "boolean") {
+    return "readsChangeScope must be a boolean when present";
+  }
   if (mod.stacks !== undefined) {
     if (!Array.isArray(mod.stacks) || mod.stacks.length === 0) return "stacks must be a non-empty array when present";
     for (const stack of mod.stacks) {

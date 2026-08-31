@@ -59,6 +59,7 @@ const IDENTITY_KEYS = Object.freeze(["$schema", "id", "match", "stack", "stacks"
  */
 const ADDITIVE_KEYS = Object.freeze({
   protectedPaths: "path",
+  immutableMigrations: "path",
   localConfig: "tracked",
   baseBranches: null,
   notOurs: null,

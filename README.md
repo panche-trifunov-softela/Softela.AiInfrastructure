@@ -69,22 +69,22 @@ never touches a directory named `memory`.
 
 ## What you get
 
-**32 rules**, in three groups. Each returns one of three outcomes: **pass**
+**33 rules**, in three groups. Each returns one of three outcomes: **pass**
 (silent), **ask** (you decide), or **deny** (blocked, always with a suggested
 fix).
 
 | Group | Covers |
 | --- | --- |
 | `git` | Branch protection, commit hygiene, rebase safety, protected paths, per-repository forbidden commands |
-| `code` | File size, folder shape, layer boundaries, naming, documentation style, reuse before writing something new |
+| `code` | File size, folder shape, layer boundaries, naming, documentation style, reuse before writing something new, migrations that have already been applied |
 | `agent` | Which model tier a subagent may use, a floor on reasoning effort, when to delegate a survey, keeping delegation one level deep, and protecting this infrastructure's own files |
 
-**29 of the 32 run in a repository that has no project config at all** —
+**29 of the 33 run in a repository that has no project config at all** —
 `projects/_default.json` supplies sensible stack detection, limits and
 protected paths, so a rule is never silently inert just because nobody wrote a
-config yet. The three that stay quiet need a repository-specific fact that
+config yet. The four that stay quiet need a repository-specific fact that
 cannot be guessed: a typecheck invocation, an install flag, a patch-manifest
-shape.
+shape, a migration-script layout.
 
 `_default.json` is a **floor, not a fallback**: writing a project file for a
 repository layers that file on top of the defaults, so naming a repository

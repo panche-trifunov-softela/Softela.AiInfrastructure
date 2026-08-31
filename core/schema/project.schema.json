@@ -53,6 +53,19 @@
         }
       }
     },
+    "immutableMigrations": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["path"],
+        "properties": {
+          "path": { "type": "string" },
+          "action": { "type": "string", "enum": ["off", "ask", "deny"] },
+          "reason": { "type": "string" }
+        }
+      }
+    },
     "localConfig": {
       "type": "array",
       "items": {
@@ -209,6 +222,7 @@
         "file-size-limit",
         "forbidden-commands",
         "hook-locality",
+        "immutable-migrations",
         "infra-self-protection",
         "local-config-isolation",
         "naming-standards",

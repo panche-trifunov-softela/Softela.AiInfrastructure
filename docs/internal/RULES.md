@@ -406,6 +406,44 @@ pattern (`filePattern`), how a declared database change is recognised
 config, not constants in the guard — and, since `core/schema/project.schema.json`
 now declares this key, a repository can actually ship it.
 
+### `immutable-migrations` · from config · `readsChangeScope: true` · `requiresConfig: ["immutableMigrations"]`
+A versioned database migration is applied once and then recorded by version
+and checksum in the migration tool's own history table. Editing one that has
+already run leaves the file and the recorded checksum disagreeing: the next
+run fails against every database that had applied it, and passes against a
+fresh one — so the developer who made the edit sees green and somebody else
+gets the failure.
+
+Fires only on the intersection of three things: a write, to a path matching a
+configured `immutableMigrations` glob, to a file `changeScope` proved already
+existed. Each entry carries its own `path`, `action` and `reason`, unioned
+across config layers the same way `protectedPaths` is.
+
+**Why this is not `protected-paths`.** That rule is deliberately blind to
+whether a file already exists, which is right for a manifest or a credential
+and wrong here: writing the NEXT versioned script is the ordinary route for
+every schema change, and its path matches the same glob as every script
+already applied. A `deny` through `protected-paths` would block routine work.
+
+**Why not `newCodeOnly`.** That flag points the other way — it holds new code
+to a standard and softens for code that predates it. Here pre-existence is
+what makes the write wrong, not what excuses it, so the rule declares
+`readsChangeScope` and reads `ctx.changeScope` in its own `evaluate`.
+`readsChangeScope` buys only the computed value; it triggers no softening.
+`"new"` and `"unknown"` are both treated as new, and pass — never having
+proved a migration pre-exists must not stop anyone writing the next one.
+
+Repeatable scripts, re-applied whenever their content changes, are meant to
+be edited in place. Nothing in the guard knows the difference; telling the
+two apart is a naming convention belonging to one repository's own scripts
+directory, so it lives in that repository's globs.
+
+- deny: an `Edit` of an existing `Database/Scripts/V1_0_0_05__*.sql`
+- pass: writing a new `V1_0_0_28__*.sql`, editing an existing `R__*.sql`,
+  any path outside the configured globs, any file not proved to pre-exist
+- not covered: the staging route (`git add -A` sweeping an edited migration
+  in) — that is `protected-paths`' job, and is deliberately not duplicated
+
 ### `doc-comment-style` · deny / ask
 Enforces the house documentation style on newly written text: judges doc
 blocks by their structure (bullets, numbered steps, tags pass at any length;

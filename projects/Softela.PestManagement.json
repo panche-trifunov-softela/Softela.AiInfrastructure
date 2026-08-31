@@ -1,0 +1,20 @@
+{
+  "$schema": "../core/schema/project.schema.json",
+  "id": "Softela.PestManagement",
+  "stack": "backend",
+
+  "match": {
+    "remotes": ["*/Softela.PestManagement"],
+    "paths": ["Softela.PestManagement"]
+  },
+
+  "baseBranches": ["master"],
+
+  "immutableMigrations": [
+    {
+      "path": "**/Database/Scripts/V*__*.sql",
+      "action": "deny",
+      "reason": "Evolve records a versioned script by version and checksum once it has run, so editing one that already exists makes the next migration fail against every database that has already applied it, while still passing against a fresh one"
+    }
+  ]
+}
