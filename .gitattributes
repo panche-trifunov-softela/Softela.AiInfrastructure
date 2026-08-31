@@ -1,0 +1,8 @@
+# This repository ships hook scripts whose bytes are hashed by the installer's
+# ownership manifest. A checkout that rewrites line endings would make every
+# installed file read as locally modified on the next update, so line endings
+# are pinned rather than left to each machine's git configuration.
+* text=auto eol=lf
+*.png binary
+*.jpg binary
+*.ico binary

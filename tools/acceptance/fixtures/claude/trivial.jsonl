@@ -1,0 +1,4 @@
+{"type":"user","message":{"role":"user","content":[{"type":"text","text":"Read the README in this repository and tell me, in one sentence, what it says."}]},"sessionId":"fixture"}
+{"type":"assistant","message":{"role":"assistant","content":[{"type":"tool_use","id":"t1","name":"Read","input":{"file_path":"<FIXTURE_REPO>\\README.md"}}]},"sessionId":"fixture"}
+{"type":"user","message":{"role":"user","content":[{"tool_use_id":"t1","type":"tool_result","content":"This is a scratch fixture repository used only by the acceptance suite.\n"}]},"sessionId":"fixture"}
+{"type":"assistant","message":{"role":"assistant","content":[{"type":"text","text":"It says this is a scratch fixture repository used only by the acceptance suite."}]},"sessionId":"fixture"}

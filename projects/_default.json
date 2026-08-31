@@ -1,0 +1,65 @@
+{
+  "$schema": "../core/schema/project.schema.json",
+  "id": "_default",
+
+  "stacks": [
+    {
+      "paths": ["**.cs", "**.csproj", "**.sln", "**.razor", "**.cshtml", "**.vb"],
+      "stack": "backend",
+      "reason": "a repository that declares no stack of its own is still recognisably backend once the file being written is C#"
+    },
+    {
+      "paths": ["**.ts", "**.tsx", "**.mts", "**.cts", "**.js", "**.jsx", "**.mjs", "**.cjs", "**.vue", "**.svelte", "**.scss", "**.css"],
+      "stack": "frontend",
+      "reason": "the same, for the TypeScript, component and styling extensions the frontend standard is written against"
+    }
+  ],
+
+  "baseBranches": ["dev", "dev-ng", "main", "master"],
+  "releaseBranchPattern": "^releases/",
+
+  "branchNaming": {
+    "pattern": "^(feature|bugfix|fix|hotfix)/((task|ticket)[_-])?\\d+[_-].+$",
+    "action": "ask",
+    "preferred": "feature/task_00000_short_name"
+  },
+
+  "protectedPaths": [
+    {
+      "path": "**/.env",
+      "action": "ask",
+      "reason": "an environment file carries credentials and machine-specific values; it is neither committed nor edited on the developer's behalf"
+    },
+    {
+      "path": "**/.env.*",
+      "action": "ask",
+      "reason": "the same, for the per-environment variants"
+    },
+    {
+      "path": "**/*.pfx",
+      "action": "ask",
+      "reason": "a signing or TLS certificate carrying its private key"
+    },
+    {
+      "path": "**/id_rsa",
+      "action": "ask",
+      "reason": "a private SSH key"
+    },
+    {
+      "path": "**/.npmrc",
+      "action": "ask",
+      "reason": "holds registry authentication tokens"
+    }
+  ],
+
+  "localConfig": [
+    {
+      "tracked": "public/config.js",
+      "perMachine": "public/config.development.js",
+      "action": "ask",
+      "reason": "public/config.js is tracked by git, so a host pointing at one machine reaches everyone who pulls it"
+    }
+  ],
+
+  "memoryLocation": "global"
+}

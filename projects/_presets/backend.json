@@ -1,0 +1,12 @@
+{
+  "$schema": "../../core/schema/project.schema.json",
+
+  "conventions": {
+    "language": "csharp"
+  },
+
+  "docCommentStyle": {
+    "maxBlockLines": 30,
+    "maxLineCommentRun": 10
+  }
+}

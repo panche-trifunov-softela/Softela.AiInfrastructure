@@ -1,0 +1,26 @@
+{
+  "id": "reply-language",
+  "title": "Reply language",
+  "summary": "Sets which language, or ordered list of languages, the agent replies in — conversation only, never code or docs.",
+  "defaultEnabled": false,
+  "requires": [],
+  "guards": [],
+  "prompt": "prompt.md",
+  "files": [
+    { "from": "hooks/validate-languages.js", "to": "hooks/validate-languages.js" }
+  ],
+  "hooks": [
+    { "agent": "claude", "event": "SessionStart", "matcher": null,
+      "command": "{{NODE}} {{INSTALLED}}/hooks/validate-languages.js --catalogue={{INSTALLED}}/modules/reply-language/languages.json --languages=\"{{OPT_LANGUAGES}}\"" },
+    { "agent": "codex", "event": "SessionStart", "matcher": null,
+      "command": "{{NODE}} {{INSTALLED}}/hooks/validate-languages.js --catalogue={{INSTALLED}}/modules/reply-language/languages.json --languages=\"{{OPT_LANGUAGES}}\"" }
+  ],
+  "settings": [],
+  "options": {
+    "languages": {
+      "type": "stringList",
+      "default": ["English"],
+      "prompt": "Which language(s) should replies use? An ordered, comma-separated list (e.g. \"German, French\") is read as a preference order. Any of the 183 ISO 639-1 languages listed in languages.json is an equally available choice; skipping this option leaves English."
+    }
+  }
+}

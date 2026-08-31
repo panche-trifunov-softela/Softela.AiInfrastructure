@@ -1,0 +1,248 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Project configuration",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["id"],
+  "properties": {
+    "$schema": { "type": "string" },
+    "id": { "type": "string", "minLength": 1 },
+    "stack": { "type": "string", "enum": ["frontend", "backend"] },
+    "stacks": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["paths", "stack"],
+        "properties": {
+          "paths": { "type": "array", "items": { "type": "string" }, "minItems": 1 },
+          "stack": { "type": "string", "enum": ["frontend", "backend"] },
+          "reason": { "type": "string" }
+        }
+      }
+    },
+    "match": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "remotes": { "type": "array", "items": { "type": "string" } },
+        "paths": { "type": "array", "items": { "type": "string" } }
+      }
+    },
+    "baseBranches": { "type": "array", "items": { "type": "string" } },
+    "releaseBranchPattern": { "type": "string" },
+    "branchNaming": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "pattern": { "type": "string" },
+        "action": { "type": "string", "enum": ["off", "ask", "deny"] },
+        "preferred": { "type": "string" }
+      }
+    },
+    "protectedPaths": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["path"],
+        "properties": {
+          "path": { "type": "string" },
+          "action": { "type": "string", "enum": ["off", "ask", "deny"] },
+          "reason": { "type": "string" }
+        }
+      }
+    },
+    "localConfig": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["tracked", "perMachine"],
+        "properties": {
+          "tracked": { "type": "string" },
+          "perMachine": { "type": "string" },
+          "action": { "type": "string", "enum": ["off", "ask", "deny"] },
+          "allowedLines": { "type": "array", "items": { "type": "string" } },
+          "switches": { "type": "array", "items": { "type": "string" } },
+          "reason": { "type": "string" }
+        }
+      }
+    },
+    "notOurs": { "type": "array", "items": { "type": "string" } },
+    "commitMessage": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "conventionalPrefix": { "type": "string", "enum": ["off", "ask", "deny"] }
+      }
+    },
+    "patchManifest": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "filePattern": { "type": "string" },
+        "databasePattern": { "type": "string" },
+        "requiredEntry": { "type": "string", "minLength": 1 }
+      }
+    },
+    "commands": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "typecheck": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "deny": { "type": "string" },
+            "fix": { "type": "string" },
+            "reason": { "type": "string" }
+          }
+        },
+        "install": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "deny": { "type": "string" },
+            "fix": { "type": "string" },
+            "reason": { "type": "string" }
+          }
+        },
+        "forbidden": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["pattern"],
+            "properties": {
+              "pattern": { "type": "string" },
+              "action": { "type": "string", "enum": ["off", "ask", "deny"] },
+              "reason": { "type": "string" }
+            }
+          }
+        }
+      }
+    },
+    "limits": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "fileLines": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "warn": { "type": "integer", "minimum": 0 },
+            "ask": { "type": "integer", "minimum": 0 }
+          }
+        }
+      }
+    },
+    "docCommentStyle": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "maxBlockLines": { "type": "integer", "minimum": 1 },
+        "maxLineCommentRun": { "type": "integer", "minimum": 1 }
+      }
+    },
+    "reuseBeforeNew": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "maxScanFiles": { "type": "integer", "minimum": 1 }
+      }
+    },
+    "conventions": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "componentFolders": { "type": "string" },
+        "sharedHooks": { "type": "string" },
+        "testFolder": { "type": "string" },
+        "apiLayer": { "type": "string" },
+        "contractTypes": { "type": "string" },
+        "sourceRoots": { "type": "array", "items": { "type": "string" } },
+        "language": { "type": "string" },
+        "pathAliases": {
+          "type": "object",
+          "additionalProperties": { "type": "string" }
+        }
+      }
+    },
+    "memoryLocation": { "type": "string", "enum": ["repo", "infrastructure", "global"] },
+    "rules": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "groups": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "git": { "$ref": "#/definitions/ruleSwitch" },
+            "code": { "$ref": "#/definitions/ruleSwitch" },
+            "agent": { "$ref": "#/definitions/ruleSwitch" }
+          }
+        },
+        "byId": {
+          "type": "object",
+          "propertyNames": { "$ref": "#/definitions/ruleId" },
+          "additionalProperties": { "$ref": "#/definitions/ruleSwitch" }
+        }
+      }
+    }
+  },
+  "definitions": {
+    "ruleId": {
+      "description": "The full set of registered rule ids (core/guards/*.js, excluding index.js). Kept in sync with the registry by tests/installer/doctor.test.js — a rule id typo'd here fails schema validation instead of silently becoming a permanent no-op.",
+      "type": "string",
+      "enum": [
+        "api-import-boundary",
+        "barrel-exports-only",
+        "branch-naming",
+        "colocated-tests",
+        "commit-message",
+        "component-folder-shape",
+        "component-types-file",
+        "component-view-logic",
+        "delegate-bulk-reading",
+        "doc-comment-style",
+        "file-size-limit",
+        "forbidden-commands",
+        "hook-locality",
+        "infra-self-protection",
+        "local-config-isolation",
+        "naming-standards",
+        "no-edit-generated-docs",
+        "no-explicit-any",
+        "no-local-merge-to-base",
+        "no-nested-delegation",
+        "no-push-to-base",
+        "package-install-flags",
+        "patch-manifest",
+        "protected-paths",
+        "pull-must-rebase",
+        "reasoning-effort-floor",
+        "rebase-safety",
+        "reuse-before-new",
+        "shell-file-write",
+        "subagent-model",
+        "test-structure",
+        "typecheck-invocation"
+      ]
+    },
+    "ruleSwitch": {
+      "oneOf": [
+        { "type": "string", "enum": ["off", "ask", "deny"] },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["action"],
+          "properties": {
+            "action": { "type": "string", "enum": ["off", "ask", "deny"] },
+            "reason": { "type": "string" }
+          }
+        }
+      ]
+    }
+  }
+}

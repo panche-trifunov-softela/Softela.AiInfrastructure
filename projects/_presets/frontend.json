@@ -1,0 +1,17 @@
+{
+  "$schema": "../../core/schema/project.schema.json",
+
+  "conventions": {
+    "componentFolders": "src/components/**",
+    "sharedHooks": "src/hooks/**",
+    "testFolder": "__tests__",
+    "apiLayer": "src/services/api/**",
+    "contractTypes": "src/types/**",
+    "sourceRoots": ["src"],
+    "language": "typescript"
+  },
+
+  "limits": {
+    "fileLines": { "warn": 1000, "ask": 1500 }
+  }
+}

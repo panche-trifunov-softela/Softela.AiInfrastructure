@@ -1,0 +1,12 @@
+{
+  "id": "analyze-first",
+  "title": "Analyze first",
+  "summary": "Read before writing, state assumptions, and ask instead of guessing when a request is genuinely ambiguous.",
+  "defaultEnabled": true,
+  "requires": [],
+  "guards": [],
+  "files": [],
+  "hooks": [],
+  "settings": [],
+  "options": {}
+}

@@ -1,0 +1,24 @@
+{
+  "name": "softela-ai-infrastructure",
+  "version": "0.1.0",
+  "private": true,
+  "engines": {
+    "node": ">=18"
+  },
+  "bin": {
+    "softela-ai": "./bin/softela-ai"
+  },
+  "scripts": {
+    "softela-ai": "node bin/softela-ai",
+    "help": "node bin/softela-ai help",
+    "preview": "node bin/softela-ai install --dry-run",
+    "setup": "node bin/softela-ai install",
+    "update": "node bin/softela-ai update",
+    "doctor": "node bin/softela-ai doctor",
+    "remove": "node bin/softela-ai uninstall",
+    "test": "node tests/run.js",
+    "test:strict-skips": "node tests/run.js --strict-skips",
+    "build:standard": "node tools/build-standard.js",
+    "build:check": "node tools/build-standard.js --check"
+  }
+}

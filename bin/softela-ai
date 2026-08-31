@@ -1,0 +1,27 @@
+#!/usr/bin/env node
+"use strict";
+
+/**
+ * The `softela-ai` CLI entry point.
+ *
+ * Requires `core/installer/index.js` by a path relative to this file, so
+ * this exact file works unmodified whether it is running from the
+ * repository clone or from `<agentHome>/softela-ai/bin/softela-ai` after the clone
+ * has been deleted — both locations keep the same layout under `core/`
+ * (INSTALLER.md §1, "deleting the clone breaks nothing").
+ */
+
+const { main } = require("../core/installer/index.js");
+
+main(process.argv.slice(2))
+  .then((code) => {
+    process.exitCode = code;
+  })
+  .catch((error) => {
+    if (process.env.SOFTELA_AI_DEBUG === "1") {
+      process.stderr.write(`${error && error.stack ? error.stack : String(error)}\n`);
+    } else {
+      process.stderr.write(`softela-ai: ${error && error.message ? error.message : String(error)}\n`);
+    }
+    process.exitCode = 1;
+  });

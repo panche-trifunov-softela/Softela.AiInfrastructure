@@ -1,0 +1,19 @@
+{
+  "id": "session-cleanup",
+  "title": "Session cleanup",
+  "summary": "Prunes saved session transcripts and their side-car folders — dry run by default, memory directories always excluded.",
+  "defaultEnabled": false,
+  "requires": [],
+  "guards": [],
+  "prompt": "prompt.md",
+  "files": [
+    { "from": "assets/clean-sessions.js", "to": "hooks/clean-sessions.js" }
+  ],
+  "commands": [
+    { "agent": "claude", "from": "assets/clean-sessions.command.md", "to": "commands/clean-sessions.md" },
+    { "agent": "codex", "from": "assets/clean-sessions.skill.md", "to": "skills/clean-sessions/SKILL.md" }
+  ],
+  "hooks": [],
+  "settings": [],
+  "options": {}
+}

@@ -1,0 +1,52 @@
+{
+  "$schema": "../core/schema/project.schema.json",
+  "id": "Softela.AiInfrastructure",
+
+  "match": {
+    "remotes": ["*/Softela.AiInfrastructure"],
+    "paths": ["Softela.AiInfrastructure"]
+  },
+
+  "baseBranches": ["main"],
+  "releaseBranchPattern": "^releases/",
+
+  "branchNaming": {
+    "pattern": "^(feature|bugfix|fix|hotfix)/((task|ticket)[_-])?\\d+[_-].+$",
+    "action": "ask",
+    "preferred": "feature/task_00000_short_name"
+  },
+
+  "protectedPaths": [
+    {
+      "path": "docs/internal/CONTRACTS.md",
+      "action": "ask",
+      "reason": "the binding specification; changing it changes what every rule and adapter must do"
+    },
+    {
+      "path": "projects/**.json",
+      "action": "ask",
+      "reason": "a checked-out project config, including this repository's own — nothing else in the repository technically stops an agent from editing one; see CONTRACTS.md §8 on the deferred blast radius of this control"
+    }
+  ],
+
+  "commands": {
+    "forbidden": [
+      {
+        "pattern": "\\bnpm\\s+(install|i|add)\\b",
+        "action": "deny",
+        "reason": "this repository declares no dependencies and must keep it that way — it installs onto machines whose Node version we do not control, and every dependency is a new way for the install to fail"
+      }
+    ]
+  },
+
+  "rules": {
+    "groups": {
+      "code": {
+        "action": "off",
+        "reason": "this repository is developer infrastructure, not a product — file-size limits, folder shape, naming and reuse checks target application code and have no target here"
+      }
+    }
+  },
+
+  "memoryLocation": "infrastructure"
+}

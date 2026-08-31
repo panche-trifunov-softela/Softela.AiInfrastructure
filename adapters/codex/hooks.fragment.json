@@ -1,0 +1,21 @@
+{
+  "description": "softela-ai PreToolUse dispatch, plus the UserPromptSubmit approval channel. Codex's matcher is a real regex, matched per-event against fields such as tool_name for PreToolUse, and fire-tested as working for SessionStart's source field (docs/internal/CONTRACTS.md §7) — but the PreToolUse tool_name literals it would need are unverified against the live host (Codex's own generated JSON Schema leaves tool_name an unconstrained string with no enum), so this registers with matcher: null and lets the shared rule engine filter by tool name itself instead of trusting an unverified pattern. UserPromptSubmit's matcher is documented as having no effect on this host, so it is null there for the same reason: the hook filters the developer's own text itself.",
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": null,
+        "hooks": [
+          { "type": "command", "command": "{{NODE}} {{DISPATCH}}" }
+        ]
+      }
+    ],
+    "UserPromptSubmit": [
+      {
+        "matcher": null,
+        "hooks": [
+          { "type": "command", "command": "{{NODE}} {{APPROVE_HOOK}} --agent=codex" }
+        ]
+      }
+    ]
+  }
+}

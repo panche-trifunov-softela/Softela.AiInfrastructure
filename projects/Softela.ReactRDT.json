@@ -1,0 +1,24 @@
+{
+  "$schema": "../core/schema/project.schema.json",
+  "id": "Softela.ReactRDT",
+  "stack": "frontend",
+  "match": {
+    "remotes": ["*/Softela.ReactRDT"]
+  },
+  "baseBranches": ["main"],
+  "releaseBranchPattern": "^releases/",
+  "branchNaming": {
+    "pattern": "^(feature|bugfix|fix|hotfix)/((task|ticket)[_-])?\\d+[_-].+$",
+    "action": "ask",
+    "preferred": "feature/task_00000_short_name"
+  },
+  "localConfig": [
+    {
+      "tracked": "public/config.js",
+      "perMachine": "public/config.development.js",
+      "action": "deny",
+      "reason": "public/config.js holds deployed hosts and is the only config file a build ships; this repository has a per-machine file, so a local host here has no reason to exist"
+    }
+  ],
+  "memoryLocation": "infrastructure"
+}

@@ -1,0 +1,22 @@
+{
+  "id": "agent-orchestration",
+  "title": "Agent orchestration",
+  "summary": "Strong models analyse, plan and decide; cheaper models read files, write code and do the routine work.",
+  "defaultEnabled": true,
+  "requires": [],
+  "guards": ["subagent-model", "reasoning-effort-floor", "delegate-bulk-reading", "no-nested-delegation"],
+  "files": [],
+  "hooks": [],
+  "settings": [
+    { "agent": "claude", "mode": "seed", "pointer": "/model", "value": "opus" },
+
+    { "agent": "codex", "mode": "seed", "pointer": "/model", "tier": "frontier" },
+    { "agent": "codex", "mode": "seed", "pointer": "/model_reasoning_effort", "value": "high" },
+    { "agent": "codex", "mode": "seed", "pointer": "/default_subagent_reasoning_effort", "value": "medium" },
+    { "agent": "codex", "mode": "seed", "pointer": "/approval_policy", "value": "on-request" },
+    { "agent": "codex", "mode": "seed", "pointer": "/approvals_reviewer", "value": "auto_review" },
+    { "agent": "codex", "mode": "seed", "pointer": "/features/multi_agent_v2", "value": true },
+    { "agent": "codex", "mode": "seed", "pointer": "/multi_agent_v2/expose_spawn_agent_model_overrides", "value": true }
+  ],
+  "options": {}
+}

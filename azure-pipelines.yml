@@ -1,0 +1,60 @@
+# CI for Softela.AiInfrastructure.
+#
+# What this validates: the rule engine, the installer, the opt-in modules,
+# and the generated standards document — everything under tests/ that does
+# not need a real Claude Code or Codex installation. tests/probes/ empirically
+# checks the real host CLIs; a hosted agent has neither installed, so those
+# probes report as skipped here, never as failed. See docs/guide/ci.md for
+# the full explanation, including that honest limitation.
+#
+# This repository ships zero npm dependencies (see package.json) and enforces
+# that on itself, so there is deliberately no `npm install`/`npm ci` step, no
+# lockfile, and no dependency cache to warm.
+#
+# ONE leg, on purpose. Windows is the platform every developer here actually
+# runs, and Node 18 is this repository's own `engines` floor: code that runs
+# on the floor runs on the newer versions above it, while code written
+# against a newer API passes on a newer leg and then fails on a developer
+# machine that has not been upgraded. A single Windows-on-the-floor run is
+# therefore the leg that catches the most, and adding more legs costs build
+# minutes on every pull request for coverage that has not yet found anything.
+trigger:
+  branches:
+    include:
+      - main
+
+pr:
+  branches:
+    include:
+      - main
+
+pool:
+  vmImage: "windows-latest"
+
+steps:
+  - checkout: self
+
+  - task: NodeTool@0
+    displayName: "Set up Node.js 18.x"
+    inputs:
+      versionSpec: "18.x"
+
+  - script: |
+      node --version
+      npm --version
+      git --version
+    displayName: "Print environment versions"
+
+  - script: npm test -- --junit $(Common.TestResultsDirectory)/junit.xml
+    displayName: "Run test suite (npm test)"
+
+  - task: PublishTestResults@2
+    displayName: "Publish test results"
+    condition: succeededOrFailed()
+    inputs:
+      testResultsFormat: "JUnit"
+      testResultsFiles: "$(Common.TestResultsDirectory)/junit.xml"
+      testRunTitle: "softela-ai tests"
+
+  - script: npm run build:check
+    displayName: "Verify generated standards document is up to date"

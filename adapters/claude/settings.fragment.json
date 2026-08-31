@@ -1,0 +1,20 @@
+{
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash|PowerShell|shell|local_shell|run_command|Write|Edit|MultiEdit|NotebookEdit|apply_patch|edit_file|write_file|Agent|Task|Workflow|spawn_agent",
+        "hooks": [
+          { "type": "command", "command": "{{NODE}} {{DISPATCH}}" }
+        ]
+      }
+    ],
+    "UserPromptSubmit": [
+      {
+        "matcher": "",
+        "hooks": [
+          { "type": "command", "command": "{{NODE}} {{APPROVE_HOOK}} --agent=claude" }
+        ]
+      }
+    ]
+  }
+}

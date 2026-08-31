@@ -1,0 +1,41 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Local overrides",
+  "type": "object",
+  "additionalProperties": false,
+  "definitions": {
+    "ruleOverride": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "action": { "type": "string", "enum": ["off", "ask", "deny"] },
+        "allow": { "type": "array", "items": { "type": "string" } },
+        "reason": { "type": "string" },
+        "setAt": {
+          "description": "ISO-8601 timestamp written by `softela-ai override set` as an audit trail. Never read by the engine, and never required — an override written by hand is valid without it.",
+          "type": "string"
+        }
+      }
+    }
+  },
+  "properties": {
+    "$schema": { "type": "string" },
+    "rules": {
+      "type": "object",
+      "additionalProperties": { "$ref": "#/definitions/ruleOverride" }
+    },
+    "projects": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "rules": {
+            "type": "object",
+            "additionalProperties": { "$ref": "#/definitions/ruleOverride" }
+          }
+        }
+      }
+    }
+  }
+}

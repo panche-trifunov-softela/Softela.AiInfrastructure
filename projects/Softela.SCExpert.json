@@ -1,0 +1,16 @@
+{
+  "$schema": "../core/schema/project.schema.json",
+  "id": "Softela.SCExpert",
+  "stack": "backend",
+  "match": {
+    "remotes": ["*/Softela.SCExpert"]
+  },
+  "baseBranches": ["dev"],
+  "releaseBranchPattern": "^releases/",
+  "branchNaming": {
+    "pattern": "^(feature|bugfix|fix|hotfix)/((task|ticket)[_-])?\\d+[_-].+$",
+    "action": "ask",
+    "preferred": "feature/task_00000_short_name"
+  },
+  "memoryLocation": "infrastructure"
+}
