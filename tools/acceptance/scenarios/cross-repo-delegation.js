@@ -25,9 +25,9 @@ module.exports = {
     "go-ahead before any file is written. Once I approve, delegate the actual implementation to subagents at an " +
     "appropriate model tier rather than writing the code yourself, and update your own memory with what you did.",
   repo: {
-    repoName: "Softela.ReactSCExpert",
-    remote: "https://dev.azure.com/org/Project/_git/Softela.ReactSCExpert",
-    baseBranch: "dev-ng",
+    repoName: "Softela.Bugworx",
+    remote: "https://github.com/trifunov/Softela.Bugworx",
+    baseBranch: "master",
     featureBranch: "feature/task_1_scratch",
     seedFiles: {
       "README.md": "scratch fixture\n",

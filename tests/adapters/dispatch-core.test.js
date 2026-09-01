@@ -31,30 +31,30 @@ function initRepo(dir, remoteUrl) {
 suite("adapters/dispatch-core", ({ test, eq, ok, tmpdir }) => {
   test("a nested shell operation naming a workdir in a different repository resolves its own project and git", () => {
     const outerRepo = tmpdir();
-    initRepo(outerRepo, "git@dev.azure.com:v3/org/Softela.SCExpert.git");
+    initRepo(outerRepo, "git@dev.azure.com:v3/org/Softela.PestManagement.git");
     const innerRepo = tmpdir();
-    initRepo(innerRepo, "https://dev.azure.com/org/Project/_git/Softela.ReactSCExpert");
+    initRepo(innerRepo, "https://github.com/trifunov/Softela.Bugworx");
 
     const ctx = buildContext({ hook_event_name: "PreToolUse", tool_name: "exec", cwd: outerRepo }, { agent: "codex" });
-    eq(ctx.project.id, "Softela.SCExpert");
+    eq(ctx.project.id, "Softela.PestManagement");
 
     const op = { kind: "shell", toolName: "shell_command", command: "npm test", cwd: innerRepo };
     const opCtx = buildOperationContext(ctx, op);
 
     eq(opCtx.cwd, innerRepo);
-    eq(opCtx.project.id, "Softela.ReactSCExpert");
+    eq(opCtx.project.id, "Softela.Bugworx");
     eq(opCtx.command, "npm test");
     ok(opCtx.git !== ctx.git, "a re-resolved operation must not share the outer call's git object");
   });
 
   test("a nested shell operation with no `workdir` literal derives its anchor from the command text itself", () => {
     const outerRepo = tmpdir();
-    initRepo(outerRepo, "git@dev.azure.com:v3/org/Softela.SCExpert.git");
+    initRepo(outerRepo, "git@dev.azure.com:v3/org/Softela.PestManagement.git");
     const innerRepo = tmpdir();
-    initRepo(innerRepo, "https://dev.azure.com/org/Project/_git/Softela.ReactSCExpert");
+    initRepo(innerRepo, "https://github.com/trifunov/Softela.Bugworx");
 
     const ctx = buildContext({ hook_event_name: "PreToolUse", tool_name: "exec", cwd: outerRepo }, { agent: "codex" });
-    eq(ctx.project.id, "Softela.SCExpert");
+    eq(ctx.project.id, "Softela.PestManagement");
 
     // No `cwd` field at all — the only evidence of which repository this
     // operation targets is the `cd` inside the command text itself, exactly
@@ -66,16 +66,16 @@ suite("adapters/dispatch-core", ({ test, eq, ok, tmpdir }) => {
     const opCtx = buildOperationContext(ctx, op);
 
     eq(opCtx.cwd, innerRepo);
-    eq(opCtx.project.id, "Softela.ReactSCExpert");
+    eq(opCtx.project.id, "Softela.Bugworx");
     ok(opCtx.git !== ctx.git, "a re-resolved operation must not share the outer call's git object");
     ok(opCtx.git.repoRoot, "git.repoRoot must be recomputed for the new anchor, not left null");
   });
 
   test("a nested shell operation's own `workdir` literal wins over anything parsed from its command text", () => {
     const outerRepo = tmpdir();
-    initRepo(outerRepo, "git@dev.azure.com:v3/org/Softela.SCExpert.git");
+    initRepo(outerRepo, "git@dev.azure.com:v3/org/Softela.PestManagement.git");
     const explicitRepo = tmpdir();
-    initRepo(explicitRepo, "https://dev.azure.com/org/Project/_git/Softela.ReactSCExpert");
+    initRepo(explicitRepo, "https://github.com/trifunov/Softela.Bugworx");
     const commandNamedRepo = tmpdir();
 
     const ctx = buildContext({ hook_event_name: "PreToolUse", tool_name: "exec", cwd: outerRepo }, { agent: "codex" });
@@ -89,7 +89,7 @@ suite("adapters/dispatch-core", ({ test, eq, ok, tmpdir }) => {
     const opCtx = buildOperationContext(ctx, op);
 
     eq(opCtx.cwd, explicitRepo);
-    eq(opCtx.project.id, "Softela.ReactSCExpert");
+    eq(opCtx.project.id, "Softela.Bugworx");
   });
 
   test("a nested shell operation with no cwd reuses the outer call's project and git unchanged", () => {

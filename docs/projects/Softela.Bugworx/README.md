@@ -98,8 +98,8 @@ repository; it is the direction it already picked, applied consistently.
   turns on format-on-save — but 23 of 179 `.jsx` files indent with four
   spaces, 170 lines run past 150 columns, and no CI step checks any of it. Do
   not reformat a file you are not otherwise changing.
-- **`npm install` needs no flags**, unlike `Softela.ReactSCExpert`. There is
-  no `package-lock.json` (it is gitignored) and no peer-dependency trap.
+- **`npm install` needs no flags.** There is no `package-lock.json` (it is
+  gitignored) and no peer-dependency conflict to work around.
 
 ## Verification
 

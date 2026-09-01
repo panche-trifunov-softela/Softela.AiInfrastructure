@@ -2,21 +2,25 @@
   "$schema": "../core/schema/project.schema.json",
   "id": "Softela.Bugworx",
   "stack": "frontend",
-
   "match": {
-    "remotes": ["*/Bugworx", "*/Softela.Bugworx"],
-    "paths": ["Bugworx", "Softela.Bugworx"]
+    "remotes": [
+      "*/Bugworx",
+      "*/Softela.Bugworx"
+    ],
+    "paths": [
+      "Bugworx",
+      "Softela.Bugworx"
+    ]
   },
-
-  "baseBranches": ["master"],
+  "baseBranches": [
+    "master"
+  ],
   "releaseBranchPattern": "^releases/",
-
   "branchNaming": {
     "pattern": "^(feature|feat|bugfix|fix|hotfix)/((task|ticket)[_-])?[A-Za-z0-9][\\w.-]*$",
     "action": "ask",
     "preferred": "feature/short-description"
   },
-
   "localConfig": [
     {
       "tracked": "react-app/.env",
@@ -25,14 +29,12 @@
       "reason": "react-app/.env is tracked, and Vite reads it into every build — a local host written here reaches everyone who pulls. The API base and the Keycloak URL both fall back to a localhost default in code, so pointing them at a local server is the routine change that must not land in the tracked file; react-app/.gitignore already ignores *.local, which is what makes .env.local the per-machine half"
     }
   ],
-
   "notOurs": [
     "react-app/public/assets/**",
     "react-app/src/assets/**",
     "react-app/dist/**",
     "gulpfile.js"
   ],
-
   "commands": {
     "forbidden": [
       {
@@ -42,15 +44,16 @@
       }
     ]
   },
-
   "conventions": {
     "componentFolders": "react-app/src/{components,pages,layouts}/**",
     "sharedHooks": "react-app/src/hooks/**",
     "testFolder": "__tests__",
     "apiLayer": "react-app/src/services/**",
-    "sourceRoots": ["react-app/src"],
+    "contractTypes": "react-app/src/types/**",
+    "sourceRoots": [
+      "react-app/src"
+    ],
     "language": "javascript"
   },
-
   "memoryLocation": "infrastructure"
 }

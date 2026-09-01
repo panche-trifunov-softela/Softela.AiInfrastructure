@@ -53,9 +53,8 @@ forbidden** — a guard may prompt before it, not deny it.
 
 ## Base branches are per-repository configuration
 
-There is no single, organisation-wide base branch. `Softela.ReactSCExpert`
-uses `dev-ng`; `Softela.SCExpert` uses `dev`; another repository may use
-something else entirely. A guard, a skill, or a piece of documentation that
+There is no single, organisation-wide base branch. One repository uses
+`master`; another may use `main`, `dev`, or something else entirely. A guard, a skill, or a piece of documentation that
 hard-codes a base branch name is wrong by construction — it must read the
 base from that repository's `projects/<RepositoryName>.json`. See
 `docs/projects/*/README.md` for what each repository currently uses.

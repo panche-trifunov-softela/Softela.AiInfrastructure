@@ -346,7 +346,7 @@ nor writes nor reads on update.
     "colocated-tests":    { "action": "off" }
   },
   "projects": {
-    "Softela.ReactSCExpert": { "rules": { "file-size-limit": { "action": "off" } } }
+    "Softela.Bugworx": { "rules": { "file-size-limit": { "action": "off" } } }
   }
 }
 ```
@@ -852,9 +852,9 @@ technical control available for its own files today; only review does.
 
 ## 8a. Stacks and presets
 
-A repository is not always one uniform kind of codebase. `Softela.SCExpert`
-is backend-only; `Softela.ReactSCExpert` is frontend-only; a monorepo such as
-`Softela.IdentityPlatform` genuinely contains both, and which one applies to a
+A repository is not always one uniform kind of codebase. `Softela.PestManagement`
+is backend-only; `Softela.Bugworx` is frontend-only; a monorepo genuinely
+contains both, and which one applies to a
 given tool call depends on *where in the repository* the call touches, not on
 the repository as a whole. `"stack"` / `"stacks"` in a project config, and a
 rule's own `stacks` field (§3), exist to make that resolvable per path instead
@@ -918,12 +918,12 @@ first.** The consequence that matters:
 `projects/_presets/frontend.json` and `projects/_presets/backend.json` hold
 the `conventions` (and other config) that are common to *every* project of
 one stack, so an individual project file only has to state what is genuinely
-its own. `Softela.ReactSCExpert.json` keeps its base branch, its protected
-path, its `cypress` `notOurs` entry, and its `tsc`/`npm` command traps — all
-genuinely specific to that repository — and gets `conventions.componentFolders`,
-`conventions.testFolder`, `conventions.apiLayer`, `conventions.contractTypes`,
-`conventions.sourceRoots`, `conventions.language` and `limits.fileLines` from
-the frontend preset instead of restating them.
+its own. `Softela.Bugworx.json` keeps its base branch, its tracked/per-machine
+config pair, its vendored-theme `notOurs` entries and its `npm test` trap —
+all genuinely specific to that repository — and gets `limits.fileLines` from
+the frontend preset instead of restating it. It does restate `conventions`
+wholesale, because the merge replaces that key rather than merging into it
+and its source root is `react-app/src`, not `src`.
 
 **Resolution**: when a context's file path resolves to a stack (above), the
 engine loads that stack's preset and merges it underneath the resolved
@@ -970,7 +970,7 @@ here) — but, unlike `naming-standards`, `reuse-before-new` no longer declares
 `requiresConfig` at all: when a project (or its preset) states no
 `conventions.sourceRoots`, the rule falls back to scanning the whole
 repository root instead of staying silent, which is what lets it run on
-`Softela.SCExpert` and on `_default` without anyone stating a source layout
+`Softela.PestManagement` and on `_default` without anyone stating a source layout
 by hand (see `RULES.md`'s `reuse-before-new` entry).
 
 ---

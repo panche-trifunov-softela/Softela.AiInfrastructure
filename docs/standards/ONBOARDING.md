@@ -51,6 +51,5 @@ want the *why* behind the whole thing rather than any one rule in it.
 ## What is genuinely unsettled
 
 `docs/OPEN-DECISIONS.md`, where a project tracks it, lists what the team
-has discussed and not yet agreed — styling strategy, extracting components
-into a shared library, and the like. Nothing there is a rule; do not enforce
+has discussed and not yet agreed — styling strategy, and the like. Nothing there is a rule; do not enforce
 or assume a position on any of it.

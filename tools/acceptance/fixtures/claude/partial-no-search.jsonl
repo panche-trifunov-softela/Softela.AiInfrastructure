@@ -5,7 +5,7 @@
 {"type":"user","message":{"role":"user","content":[{"type":"text","text":"This looks right. Looks good, go ahead."}]},"sessionId":"fixture"}
 {"type":"assistant","message":{"role":"assistant","content":[{"type":"tool_use","id":"t3","name":"Agent","input":{"model":"sonnet","prompt":"implement the Widget component"}}]},"sessionId":"fixture"}
 {"type":"user","message":{"role":"user","content":[{"tool_use_id":"t3","type":"tool_result","content":"subagent finished: Widget.tsx created"}]},"sessionId":"fixture"}
-{"type":"assistant","message":{"role":"assistant","content":[{"type":"tool_use","id":"t4","name":"Write","input":{"file_path":"<FIXTURE_REPO>\\src\\components\\Widget\\Widget.tsx","content":"export function Widget() { return null; }\n"}}]},"sessionId":"fixture"}
+{"type":"assistant","message":{"role":"assistant","content":[{"type":"tool_use","id":"t4","name":"Write","input":{"file_path":"<FIXTURE_REPO>\\react-app\\src\\components\\Widget\\Widget.tsx","content":"export function Widget() { return null; }\n"}}]},"sessionId":"fixture"}
 {"type":"user","message":{"role":"user","content":[{"tool_use_id":"t4","type":"tool_result","content":"File written"}]},"sessionId":"fixture"}
 {"type":"assistant","message":{"role":"assistant","content":[{"type":"tool_use","id":"t5","name":"Write","input":{"file_path":"C:\\Users\\Dev\\.claude\\memory\\ACTIVE-WORK.md","content":"## AS-OBSERVED — added Widget component\n\nWidget.tsx follows the existing shared-component pattern; no new shared helper was needed.\n"}}]},"sessionId":"fixture"}
 {"type":"user","message":{"role":"user","content":[{"tool_use_id":"t5","type":"tool_result","content":"File written"}]},"sessionId":"fixture"}

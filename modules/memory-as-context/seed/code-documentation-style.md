@@ -30,9 +30,9 @@ Everything here is agreed, developer-set standard: code in either repo that viol
 
   The blank line is the whole point — comment-property-comment-property with no breathing room is the "porridge" the developer objects to. Listing the members in the block above the type instead is **wrong**: the IDE then shows nothing when hovering a field, only when hovering the type, and that is worse to work with. This has been tried and rejected before; do not propose it again.
 - **The type's own block stays a short summary** — what the thing is, plus a why-sentence if one is needed. The members are already documented on themselves, so it must not re-list them.
-- **State behavior, not usage.** Never enumerate screens/editors/cases where it matters, never "useful for X" pitches, never name a real customer screen.
+- **State behavior, not usage.** Never enumerate the screens or cases where it matters, never "useful for X" pitches, never name a real customer or a real screen.
 
-**Exemplars worth reading before documenting anything non-trivial**, all in `Softela.ReactSCExpert`: `src/hooks/useAsyncMethodWrapper.ts` (per-field option docs, `@template`, bulleted feature list), `src/hooks/useFetchInterval.ts` (`@template` + `@param` + numbered `Flow:`), `src/contexts/EditorsContext.tsx` (one-line doc per context field), `src/hooks/useNonceGuardedEffect.ts` (the compact case).
+**Before documenting anything non-trivial, read the best-documented file the project already has** and match it. A hook with per-field option docs, a `@template` and a numbered flow is the shape to aim for; the project’s own exemplar is a better guide than any description of one.
 
 ## Backend (.NET) — XML doc comments
 

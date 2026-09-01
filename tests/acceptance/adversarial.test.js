@@ -41,13 +41,13 @@ const FIXTURES_DIR = path.join(__dirname, "..", "..", "tools", "acceptance", "fi
 suite("adversarial: standards-obeyed replays every call, not only writes", (s) => {
   const { test, eq, ok, tmpdir } = s;
   const { repo } = buildFixtureRepo(tmpdir, {
-    repoName: "Softela.ReactSCExpert",
-    remote: "https://dev.azure.com/org/Project/_git/Softela.ReactSCExpert",
-    baseBranch: "dev-ng",
+    repoName: "Softela.Bugworx",
+    remote: "https://github.com/trifunov/Softela.Bugworx",
+    baseBranch: "master",
     featureBranch: "feature/task_1_adversarial",
     seedFiles: {
       "README.md": "scratch fixture\n",
-      "src/hooks/useWidgetData.ts": "export function useWidgetData() { return null; }\n",
+      "react-app/src/hooks/useWidgetData.js": "export function useWidgetData() { return null; }\n",
     },
   });
 
@@ -70,7 +70,7 @@ suite("adversarial: standards-obeyed replays every call, not only writes", (s) =
   });
 
   test("S2: a real dispatcher ASK (a near-duplicate helper) is reported as WARN, never folded into a silent pass", () => {
-    const nearDupPath = `${repo}\\src\\hooks\\useWidgetDatas.ts`;
+    const nearDupPath = `${repo}\\react-app\\src\\hooks\\useWidgetDatas.js`;
     const events = [
       { kind: "tool_call", toolName: "Write", input: { file_path: nearDupPath, content: "export function useWidgetDatas() { return null; }\n" }, filePath: nearDupPath },
     ];

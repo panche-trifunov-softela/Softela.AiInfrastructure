@@ -216,7 +216,7 @@ suite("guards/protected-paths", ({ test, eq }) => {
     {
       label: "a glob protected-path entry catches a matching file",
       toolName: "Write",
-      filePath: "/repo/projects/Softela.SCExpert.json",
+      filePath: "/repo/projects/Softela.PestManagement.json",
       git: { repoRoot: "/repo" },
       project: GLOB_PROTECTED,
       want: "ask",
@@ -240,7 +240,7 @@ suite("guards/protected-paths", ({ test, eq }) => {
     {
       label: "a glob entry is not matched when the repository root cannot be resolved",
       toolName: "Write",
-      filePath: "/unresolved/mount/projects/Softela.SCExpert.json",
+      filePath: "/unresolved/mount/projects/Softela.PestManagement.json",
       git: { repoRoot: null },
       project: GLOB_PROTECTED,
       want: "pass",

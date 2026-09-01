@@ -8,13 +8,13 @@ const { suite } = require("../harness");
 const { PROJECT_MINIMAL, decide, decision, makeGit, makeOverrides } = require("./_ctx");
 
 /**
- * The real, shipped `Softela.ReactSCExpert.json` — loaded from disk, not a
+ * The real, shipped `Softela.Bugworx.json` — loaded from disk, not a
  * hand-written fixture, so the field-test case below exercises exactly the
  * config a real session resolves, `conventions` included only through the
  * engine's own frontend-stack preset merge.
  */
-const REAL_REACT_SCEXPERT_PROJECT = readJson(
-  path.join(__dirname, "..", "..", "projects", "Softela.ReactSCExpert.json"),
+const REAL_FRONTEND_PROJECT = readJson(
+  path.join(__dirname, "..", "..", "projects", "Softela.Bugworx.json"),
 );
 
 /**
@@ -63,11 +63,11 @@ function decideReal(testRule, project, partial) {
 suite("guards/colocated-tests", ({ test, eq }) => {
   // --- field test: the real regression, against the real shipped config ---
 
-  test("the field-regression test path denies against the real, disk-loaded Softela.ReactSCExpert.json", () => {
+  test("the field-regression test path denies against the real, disk-loaded Softela.Bugworx.json", () => {
     eq(
-      decideReal(rule, REAL_REACT_SCEXPERT_PROJECT, {
+      decideReal(rule, REAL_FRONTEND_PROJECT, {
         toolName: "Write",
-        filePath: "src/components/layout/ScreenSummaryChip.test.tsx",
+        filePath: "react-app/src/components/Common/StatusChip.test.jsx",
       }),
       "deny",
     );
@@ -75,14 +75,14 @@ suite("guards/colocated-tests", ({ test, eq }) => {
 
   test("the field-regression denial names the real subject in the fix", () => {
     const result = evaluate(
-      realProjectCtx(REAL_REACT_SCEXPERT_PROJECT, {
+      realProjectCtx(REAL_FRONTEND_PROJECT, {
         toolName: "Write",
-        filePath: "src/components/layout/ScreenSummaryChip.test.tsx",
+        filePath: "react-app/src/components/Common/StatusChip.test.jsx",
       }),
       { rules: [rule] },
     );
     eq(result.action, "deny");
-    eq(result.fix.includes("ScreenSummaryChip/__tests__/ScreenSummaryChip.test.tsx"), true);
+    eq(result.fix.includes("StatusChip/__tests__/StatusChip.test.jsx"), true);
   });
 
   // --- positive: genuinely misplaced ---------------------------------------

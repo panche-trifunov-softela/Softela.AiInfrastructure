@@ -16,7 +16,7 @@ There are **zero spec files** in the repository. Not "few" — none.
 
 ```bash
 cd react-app
-npm install        # no flags needed, unlike Softela.ReactSCExpert's `npm i --force`
+npm install        # no flags needed; no lockfile, no peer-dependency conflict
 npm run build      # vite build — the real check
 npm run lint       # eslint flat config; NOT run in CI
 ```

@@ -67,7 +67,7 @@ suite("schema/project.schema.json", ({ test, eq }) => {
   }
 
   test("the backend project declares no file-size limit at all", () => {
-    const data = readJson(path.join(REPO_ROOT, "projects", "Softela.SCExpert.json"));
+    const data = readJson(path.join(REPO_ROOT, "projects", "Softela.PestManagement.json"));
     eq(data.limits === undefined, true, "the team has not agreed a backend threshold yet");
   });
 

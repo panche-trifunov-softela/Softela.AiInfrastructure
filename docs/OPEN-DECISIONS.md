@@ -11,63 +11,23 @@ open.
 
 ## Styling strategy
 
-Co-located SCSS module per component folder, MUI's `sx` prop, or a deliberate
-mix?
+A co-located stylesheet per component folder, the UI framework's own inline
+style mechanism, global stylesheets, or a deliberate mix?
 
-- The current split between `sx` and SCSS modules has never been measured.
-- A previous attempt to move styles into a co-located location was later
-  refactored back into the shared theme files.
-- Conditional styles and values computed at runtime (sizes and positions
-  derived from state) are the boundary case any rule has to account for.
-
-## Extracting large components into services or plugins
-
-Does the per-display-type rendering logic in the biggest components (table
-editor, tab control, screen builder, the DT display-type form) move out into a
-services or plugin layer first, or does the component-folder pattern come
-first?
-
-- The two tracks are currently proceeding independently and have not been
-  reconciled.
-- Nothing should land that conflicts with the larger refactor already being
-  planned, and that plan is not documented yet.
-
-## The `@softela` shared component library's direction
-
-Does `@softela/basic` and its siblings stay the right dependency, and in what form?
-
-- It wraps MUI behind a narrowed props API, so anything MUI already offers has
-  to be added back by changing the library — slow enough that people have
-  started using MUI directly instead.
-- The consistency argument still holds if the library carries the full props
-  API and a genuinely shared design system.
-- The local development loop for changing it (publish, bump, reinstall) is slow
-  and needs a faster path.
-- A partial commitment — narrowed wrapper, no faster dev loop — is the worst
-  option: it pays the wrapping cost without buying the consistency.
-- The idea of a shared library is usually right; the objection tends to be to
-  how the current one looks and behaves, not to the concept of having one.
-  People bypassing it for the underlying framework directly is itself the
-  signal worth paying attention to, more than any single complaint.
-- The decision needed is binary: either the library carries a full props API
-  with a design system genuinely shared across whatever depends on it, or it
-  is not the right dependency going forward.
-- This is ordinarily a decision owned outside the frontend team itself.
-
-## Micro-frontends
-
-Should larger reusable components eventually ship as separately loadable
-bundles that other applications install and load at runtime, rather than being
-imported as source?
-
-- Agreed to exist on the horizon; no scope and no timeline.
-- Linked to the "extraction into services" question above.
+- No project here has measured its own current split, so any rule would be
+  written against a guess.
+- Where a previous attempt to move styles into co-located files has been
+  made, it has tended to be refactored back into shared theme files — worth
+  understanding before repeating it.
+- Conditional styles, and values computed at runtime (sizes and positions
+  derived from state), are the boundary case any rule has to account for:
+  they gain nothing from being forced into a stylesheet.
 
 ## Machine-specific configuration on the backend
 
-`Softela.SCExpert` tracks `appsettings.Development.json` in more than fifteen
-projects, so a developer's own local connection string or port lands in a
-file everyone else pulls — the same failure the frontend's tracked/per-machine
+`Softela.PestManagement` tracks `appsettings.Development.json`, so a
+developer's own local connection string or port lands in a file everyone
+else pulls — the same failure the frontend's tracked/per-machine
 split was adopted to prevent, unaddressed on the backend.
 
 - Whether the backend adopts an equivalent per-machine file at all is open.
@@ -128,9 +88,3 @@ skipped is a rule that will be.
 - The exact reviewer-count policy is, either way, a per-project decision,
   not something fixed by this proposal.
 
-## A wider re-architecture proposal is expected
-
-A broader re-architecture is understood to be planned outside the frontend
-team, and there is no documentation for it yet. **Its absence does not block
-anything documented elsewhere in this repository** — the git flow, the
-documentation standard and the per-repository notes all stand on their own.

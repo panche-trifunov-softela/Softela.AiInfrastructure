@@ -168,7 +168,7 @@ Accepts: `--dry-run`, `--json`, plus:
 | `--repo <path>` | the current working directory | The product repository to write the pointer into. |
 
 ```
-softela-ai link --repo ../Softela.SCExpert
+softela-ai link --repo ../Softela.Bugworx
 ```
 
 ### Pruning session transcripts

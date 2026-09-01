@@ -143,9 +143,9 @@ Six parts:
 
 - **Seeder** — runs before the injector below reads anything, on every
   `SessionStart` (and Codex's `PostCompact`). Lands this module's own shipped
-  knowledge base — the Softela SCExpert knowledge base this repository is
-  built for, shipped so every developer starts from the same facts, not a
-  generic, host-agnostic starter set — at `<memoryDir>/softela/<slug>.md`, a
+  knowledge base — the Softela knowledge base this repository is built for,
+  shipped so every developer starts from the same facts, not a generic,
+  host-agnostic starter set — at `<memoryDir>/softela/<slug>.md`, a
   subdirectory the tool owns outright and freely rewrites, plus regenerates a
   managed index block inside `MEMORY.md` and writes `ACTIVE-WORK.md` from a
   shipped template when absent. A developer's own top-level file with the

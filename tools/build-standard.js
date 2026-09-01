@@ -19,9 +19,9 @@
  * Editing that one file updates both generated outputs; neither ever carries
  * a hand-maintained copy of the other's content.
  *
- * `docs/standards/EXCLUDED-FROM-SOURCE.md` and `docs/standards/ONBOARDING.md`
- * describe the split itself rather than being part of any standard's own
- * content, and are deliberately not included in any assembly.
+ * `docs/standards/ONBOARDING.md` describes a reading order rather than being
+ * part of any standard's own content, and is deliberately not included in
+ * any assembly.
  */
 
 const fs = require("fs");

@@ -28,7 +28,7 @@
  *   `projects/` directory is therefore not reachable through the real
  *   dispatcher entry points; inventing a new steering mechanism was out of
  *   scope for this suite (see the task's own instructions), so every
- *   scenario here runs against the shipped `projects/Softela.ReactSCExpert.json`
+ *   scenario here runs against the shipped `projects/Softela.Bugworx.json`
  *   and its merged `projects/_presets/frontend.json` instead. The fixture
  *   below is a disposable git repository whose remote matches that project's
  *   own `match.remotes` pattern — the same approach already proven out in
@@ -69,8 +69,8 @@ const { execFileSync } = require("child_process");
 const { suite } = require("../harness");
 const { CLAUDE_DISPATCH, CODEX_DISPATCH, runDispatcher } = require("../adapters/_spawn");
 
-/** The base branch every scenario's feature branch is cut from, matching `projects/Softela.ReactSCExpert.json`'s own `baseBranches`. */
-const BASE_BRANCH = "dev-ng";
+/** The base branch every scenario's feature branch is cut from, matching `projects/Softela.Bugworx.json`'s own `baseBranches`. */
+const BASE_BRANCH = "master";
 
 /** The feature branch checked out for every scenario, matching that project's own `branchNaming` convention. */
 const FEATURE_BRANCH = "feature/task_1_scratch";
@@ -82,8 +82,7 @@ const RULE = {
   noExplicitAny: "no-explicit-any",
   barrelExportsOnly: "barrel-exports-only",
   apiImportBoundary: "api-import-boundary",
-  typecheckInvocation: "typecheck-invocation",
-  packageInstallFlags: "package-install-flags",
+  forbiddenCommands: "forbidden-commands",
   noPushToBase: "no-push-to-base",
   commitMessage: "commit-message",
   shellFileWrite: "shell-file-write",
@@ -104,7 +103,7 @@ function git(cwd, args) {
 
 /**
  * Builds the one scratch fixture the whole suite shares: a repository
- * literally named `Softela.ReactSCExpert`, with a remote matching that
+ * literally named `Softela.Bugworx`, with a remote matching that
  * project's own `match.remotes` pattern, one committed flat component (for
  * the "move an existing file" scenario), a base branch, and a feature
  * branch cut from it.
@@ -116,7 +115,7 @@ function git(cwd, args) {
  */
 function buildFixture(tmpdir) {
   const scratch = tmpdir();
-  const provisional = path.join(scratch, "Softela.ReactSCExpert");
+  const provisional = path.join(scratch, "Softela.Bugworx");
   fs.mkdirSync(provisional);
   git(provisional, ["init", "-q"]);
 
@@ -125,11 +124,11 @@ function buildFixture(tmpdir) {
 
   git(repo, ["config", "user.email", "acceptance@example.invalid"]);
   git(repo, ["config", "user.name", "Acceptance Suite"]);
-  git(repo, ["remote", "add", "origin", "https://dev.azure.com/org/Project/_git/Softela.ReactSCExpert"]);
+  git(repo, ["remote", "add", "origin", "https://github.com/trifunov/Softela.Bugworx"]);
 
   fs.writeFileSync(path.join(repo, "README.md"), "scratch fixture\n");
-  fs.mkdirSync(path.join(repo, "src", "components"), { recursive: true });
-  fs.writeFileSync(path.join(repo, "src", "components", "Old.tsx"), "export function Old() { return null; }\n");
+  fs.mkdirSync(path.join(repo, "react-app", "src", "components"), { recursive: true });
+  fs.writeFileSync(path.join(repo, "react-app", "src", "components", "Old.tsx"), "export function Old() { return null; }\n");
 
   git(repo, ["add", "."]);
   git(repo, ["commit", "-q", "-m", "seed fixture"]);
@@ -280,110 +279,110 @@ suite("acceptance/enforcement", (s) => {
   /* ============================================================ refused */
 
   test("Claude Code refuses a component file written flat instead of in its own folder", () => {
-    const filePath = path.join(repo, "src", "components", "Foo.tsx");
+    const filePath = path.join(repo, "react-app", "src", "components", "Foo.tsx");
     const content = "export function Foo() { return null; }\n";
     assertRefused(a, runClaude(claudeWrite(filePath, content, repo), repo), "deny", RULE.componentFolderShape);
   });
   test("Codex refuses a component file written flat instead of in its own folder", () => {
-    const filePath = path.join(repo, "src", "components", "Foo.tsx");
+    const filePath = path.join(repo, "react-app", "src", "components", "Foo.tsx");
     const content = "export function Foo() { return null; }\n";
     assertRefused(a, runCodex(codexWrite(filePath, content, repo), repo), codexDecisionFor("deny"), RULE.componentFolderShape);
   });
 
   test("Claude Code refuses a spec written beside its source instead of in the test folder", () => {
-    const filePath = path.join(repo, "src", "components", "Widget", "Widget.test.tsx");
+    const filePath = path.join(repo, "react-app", "src", "components", "Widget", "Widget.test.tsx");
     const content = "test('renders', () => {});\n";
     assertRefused(a, runClaude(claudeWrite(filePath, content, repo), repo), "deny", RULE.colocatedTests);
   });
   test("Codex refuses a spec written beside its source instead of in the test folder", () => {
-    const filePath = path.join(repo, "src", "components", "Widget", "Widget.test.tsx");
+    const filePath = path.join(repo, "react-app", "src", "components", "Widget", "Widget.test.tsx");
     const content = "test('renders', () => {});\n";
     assertRefused(a, runCodex(codexWrite(filePath, content, repo), repo), codexDecisionFor("deny"), RULE.colocatedTests);
   });
 
   test("Claude Code refuses a kebab-case component folder where the convention is PascalCase", () => {
-    const filePath = path.join(repo, "src", "components", "my-widget", "MyWidget.tsx");
+    const filePath = path.join(repo, "react-app", "src", "components", "my-widget", "MyWidget.tsx");
     const content = "export function MyWidget() { return null; }\n";
     assertRefused(a, runClaude(claudeWrite(filePath, content, repo), repo), "deny", RULE.componentFolderShape);
   });
   test("Codex refuses a kebab-case component folder where the convention is PascalCase", () => {
-    const filePath = path.join(repo, "src", "components", "my-widget", "MyWidget.tsx");
+    const filePath = path.join(repo, "react-app", "src", "components", "my-widget", "MyWidget.tsx");
     const content = "export function MyWidget() { return null; }\n";
     assertRefused(a, runCodex(codexWrite(filePath, content, repo), repo), codexDecisionFor("deny"), RULE.componentFolderShape);
   });
 
   test("Claude Code refuses `any` in a contract type", () => {
-    const filePath = path.join(repo, "src", "types", "Foo.ts");
+    const filePath = path.join(repo, "react-app", "src", "types", "Foo.ts");
     const content = "export interface Foo { bar: any; }\n";
     assertRefused(a, runClaude(claudeWrite(filePath, content, repo), repo), "deny", RULE.noExplicitAny);
   });
   test("Codex refuses `any` in a contract type", () => {
-    const filePath = path.join(repo, "src", "types", "Foo.ts");
+    const filePath = path.join(repo, "react-app", "src", "types", "Foo.ts");
     const content = "export interface Foo { bar: any; }\n";
     assertRefused(a, runCodex(codexWrite(filePath, content, repo), repo), codexDecisionFor("deny"), RULE.noExplicitAny);
   });
 
   test("Claude Code refuses executable logic inside a barrel file", () => {
-    const filePath = path.join(repo, "src", "components", "Widget", "index.ts");
+    const filePath = path.join(repo, "react-app", "src", "components", "Widget", "index.ts");
     const content = 'export * from "./Widget";\nconsole.log("side effect");\n';
     assertRefused(a, runClaude(claudeWrite(filePath, content, repo), repo), "deny", RULE.barrelExportsOnly);
   });
   test("Codex refuses executable logic inside a barrel file", () => {
-    const filePath = path.join(repo, "src", "components", "Widget", "index.ts");
+    const filePath = path.join(repo, "react-app", "src", "components", "Widget", "index.ts");
     const content = 'export * from "./Widget";\nconsole.log("side effect");\n';
     assertRefused(a, runCodex(codexWrite(filePath, content, repo), repo), codexDecisionFor("deny"), RULE.barrelExportsOnly);
   });
 
   test("Claude Code refuses a component importing the API layer directly", () => {
-    const filePath = path.join(repo, "src", "components", "Widget", "Widget.tsx");
+    const filePath = path.join(repo, "react-app", "src", "components", "Widget", "Widget.tsx");
     const content = 'import { getData } from "../../services/api/dataService";\nexport function Widget() { return null; }\n';
     assertRefused(a, runClaude(claudeWrite(filePath, content, repo), repo), "deny", RULE.apiImportBoundary);
   });
   test("Codex refuses a component importing the API layer directly", () => {
-    const filePath = path.join(repo, "src", "components", "Widget", "Widget.tsx");
+    const filePath = path.join(repo, "react-app", "src", "components", "Widget", "Widget.tsx");
     const content = 'import { getData } from "../../services/api/dataService";\nexport function Widget() { return null; }\n';
     assertRefused(a, runCodex(codexWrite(filePath, content, repo), repo), codexDecisionFor("deny"), RULE.apiImportBoundary);
   });
 
-  /* --- the bare typecheck invocation, written three ways --- */
+  /* --- the project's own command trap, written three ways ---
+   *
+   * `npm test` here exits 0 having run nothing: the project declares no test
+   * script, so a green run is indistinguishable from a passing suite. The
+   * project config asks before it. The two PARENT-directory spellings are the
+   * workdir regression `core/lib/workdir.js#extractShellWorkdir` exists for —
+   * without it, `resolveProject` matches nothing from the parent and a
+   * project-configured command rule never fires at all. */
 
-  test("Claude Code refuses the bare typecheck invocation from inside the repository", () => {
-    assertRefused(a, runClaude(claudeShell("npx tsc --noEmit", repo), repo), "deny", RULE.typecheckInvocation);
+  test("Claude Code asks before the no-op test invocation from inside the repository", () => {
+    assertRefused(a, runClaude(claudeShell("npm test", repo), repo), "ask", RULE.forbiddenCommands);
   });
-  test("Codex refuses the bare typecheck invocation from inside the repository", () => {
-    assertRefused(a, runCodex(codexShell("npx tsc --noEmit", repo), repo), codexDecisionFor("deny"), RULE.typecheckInvocation);
-  });
-
-  test('Claude Code refuses the bare typecheck invocation from the PARENT directory via cd "<repo>" && ... (double-quoted)', () => {
-    const command = `cd "${path.basename(repo)}" && npx tsc --noEmit`;
-    assertRefused(a, runClaude(claudeShell(command, parent), parent), "deny", RULE.typecheckInvocation);
-  });
-  test('Codex refuses the bare typecheck invocation from the PARENT directory via cd "<repo>" && ... (double-quoted)', () => {
-    const command = `cd "${path.basename(repo)}" && npx tsc --noEmit`;
-    assertRefused(a, runCodex(codexShell(command, parent), parent), codexDecisionFor("deny"), RULE.typecheckInvocation);
+  test("Codex asks before the no-op test invocation from inside the repository", () => {
+    assertRefused(a, runCodex(codexShell("npm test", repo), repo), codexDecisionFor("ask"), RULE.forbiddenCommands);
   });
 
-  test("Claude Code refuses the bare typecheck invocation from the PARENT directory via cd <repo> && ... (unquoted)", () => {
-    const command = `cd ${path.basename(repo)} && npx tsc --noEmit`;
-    assertRefused(a, runClaude(claudeShell(command, parent), parent), "deny", RULE.typecheckInvocation);
+  test('Claude Code asks before the no-op test invocation from the PARENT directory via cd "<repo>" && ... (double-quoted)', () => {
+    const command = `cd "${path.basename(repo)}" && npm test`;
+    assertRefused(a, runClaude(claudeShell(command, parent), parent), "ask", RULE.forbiddenCommands);
   });
-  test("Codex refuses the bare typecheck invocation from the PARENT directory via cd <repo> && ... (unquoted)", () => {
-    const command = `cd ${path.basename(repo)} && npx tsc --noEmit`;
-    assertRefused(a, runCodex(codexShell(command, parent), parent), codexDecisionFor("deny"), RULE.typecheckInvocation);
+  test('Codex asks before the no-op test invocation from the PARENT directory via cd "<repo>" && ... (double-quoted)', () => {
+    const command = `cd "${path.basename(repo)}" && npm test`;
+    assertRefused(a, runCodex(codexShell(command, parent), parent), codexDecisionFor("ask"), RULE.forbiddenCommands);
   });
 
-  test("Claude Code refuses an install command missing the flag the project requires", () => {
-    assertRefused(a, runClaude(claudeShell("npm install", repo), repo), "deny", RULE.packageInstallFlags);
+  test("Claude Code asks before the no-op test invocation from the PARENT directory via cd <repo> && ... (unquoted)", () => {
+    const command = `cd ${path.basename(repo)} && npm test`;
+    assertRefused(a, runClaude(claudeShell(command, parent), parent), "ask", RULE.forbiddenCommands);
   });
-  test("Codex refuses an install command missing the flag the project requires", () => {
-    assertRefused(a, runCodex(codexShell("npm install", repo), repo), codexDecisionFor("deny"), RULE.packageInstallFlags);
+  test("Codex asks before the no-op test invocation from the PARENT directory via cd <repo> && ... (unquoted)", () => {
+    const command = `cd ${path.basename(repo)} && npm test`;
+    assertRefused(a, runCodex(codexShell(command, parent), parent), codexDecisionFor("ask"), RULE.forbiddenCommands);
   });
 
   test("Claude Code refuses a push to a base branch", () => {
-    assertRefused(a, runClaude(claudeShell("git push origin HEAD:dev-ng", repo), repo), "deny", RULE.noPushToBase);
+    assertRefused(a, runClaude(claudeShell("git push origin HEAD:master", repo), repo), "deny", RULE.noPushToBase);
   });
   test("Codex refuses a push to a base branch", () => {
-    assertRefused(a, runCodex(codexShell("git push origin HEAD:dev-ng", repo), repo), codexDecisionFor("deny"), RULE.noPushToBase);
+    assertRefused(a, runCodex(codexShell("git push origin HEAD:master", repo), repo), codexDecisionFor("deny"), RULE.noPushToBase);
   });
 
   test("Claude Code refuses a commit subject naming a ticket id", () => {
@@ -399,49 +398,49 @@ suite("acceptance/enforcement", (s) => {
   });
 
   test("Claude Code refuses a file written through a shell heredoc rather than a write tool", () => {
-    const command = "cat > src/components/Widget/index.ts <<'EOF'\nexport * from './Widget';\nEOF";
+    const command = "cat > react-app/src/components/Widget/index.js <<'EOF'\nexport * from './Widget';\nEOF";
     assertRefused(a, runClaude(claudeShell(command, repo), repo), "deny", RULE.shellFileWrite);
   });
   test("Codex refuses a file written through a shell heredoc rather than a write tool", () => {
-    const command = "cat > src/components/Widget/index.ts <<'EOF'\nexport * from './Widget';\nEOF";
+    const command = "cat > react-app/src/components/Widget/index.js <<'EOF'\nexport * from './Widget';\nEOF";
     assertRefused(a, runCodex(codexShell(command, repo), repo), codexDecisionFor("deny"), RULE.shellFileWrite);
   });
 
   /* ============================================================= allowed */
 
   test("Claude Code allows the compliant component file", () => {
-    const filePath = path.join(repo, "src", "components", "Widget", "Widget.tsx");
+    const filePath = path.join(repo, "react-app", "src", "components", "Widget", "Widget.tsx");
     assertAllowed(a, runClaude(claudeWrite(filePath, "export function Widget() { return null; }\n", repo), repo));
   });
   test("Codex allows the compliant component file", () => {
-    const filePath = path.join(repo, "src", "components", "Widget", "Widget.tsx");
+    const filePath = path.join(repo, "react-app", "src", "components", "Widget", "Widget.tsx");
     assertAllowed(a, runCodex(codexWrite(filePath, "export function Widget() { return null; }\n", repo), repo));
   });
 
   test("Claude Code allows the component's own barrel", () => {
-    const filePath = path.join(repo, "src", "components", "Widget", "index.ts");
+    const filePath = path.join(repo, "react-app", "src", "components", "Widget", "index.ts");
     assertAllowed(a, runClaude(claudeWrite(filePath, 'export * from "./Widget";\n', repo), repo));
   });
   test("Codex allows the component's own barrel", () => {
-    const filePath = path.join(repo, "src", "components", "Widget", "index.ts");
+    const filePath = path.join(repo, "react-app", "src", "components", "Widget", "index.ts");
     assertAllowed(a, runCodex(codexWrite(filePath, 'export * from "./Widget";\n', repo), repo));
   });
 
   test("Claude Code allows the component's own colocated hook", () => {
-    const filePath = path.join(repo, "src", "components", "Widget", "hooks", "useWidgetData.ts");
+    const filePath = path.join(repo, "react-app", "src", "components", "Widget", "hooks", "useWidgetData.ts");
     assertAllowed(a, runClaude(claudeWrite(filePath, "export function useWidgetData() { return null; }\n", repo), repo));
   });
   test("Codex allows the component's own colocated hook", () => {
-    const filePath = path.join(repo, "src", "components", "Widget", "hooks", "useWidgetData.ts");
+    const filePath = path.join(repo, "react-app", "src", "components", "Widget", "hooks", "useWidgetData.ts");
     assertAllowed(a, runCodex(codexWrite(filePath, "export function useWidgetData() { return null; }\n", repo), repo));
   });
 
   test("Claude Code allows a spec in the test folder", () => {
-    const filePath = path.join(repo, "src", "components", "Widget", "__tests__", "Widget.test.tsx");
+    const filePath = path.join(repo, "react-app", "src", "components", "Widget", "__tests__", "Widget.test.tsx");
     assertAllowed(a, runClaude(claudeWrite(filePath, "test('renders', () => {});\n", repo), repo));
   });
   test("Codex allows a spec in the test folder", () => {
-    const filePath = path.join(repo, "src", "components", "Widget", "__tests__", "Widget.test.tsx");
+    const filePath = path.join(repo, "react-app", "src", "components", "Widget", "__tests__", "Widget.test.tsx");
     assertAllowed(a, runCodex(codexWrite(filePath, "test('renders', () => {});\n", repo), repo));
   });
 
@@ -451,11 +450,11 @@ suite("acceptance/enforcement", (s) => {
     // core/guards/reuse-before-new.js#moveExclusion is what tells the two
     // apart, and core/guards/component-folder-shape.js has nothing to say
     // about a folder that already matches its own file's name.
-    const filePath = path.join(repo, "src", "components", "Old", "Old.tsx");
+    const filePath = path.join(repo, "react-app", "src", "components", "Old", "Old.tsx");
     assertAllowed(a, runClaude(claudeWrite(filePath, "export function Old() { return null; }\n", repo), repo));
   });
   test("Codex allows moving an existing flat component into its own folder", () => {
-    const filePath = path.join(repo, "src", "components", "Old", "Old.tsx");
+    const filePath = path.join(repo, "react-app", "src", "components", "Old", "Old.tsx");
     assertAllowed(a, runCodex(codexWrite(filePath, "export function Old() { return null; }\n", repo), repo));
   });
 

@@ -22,11 +22,11 @@ const { execFileSync } = require("child_process");
 const { suite } = require("../harness");
 const { buildContext } = require("../../core/lib/context");
 
-/** The real, shipped backend project's own matching remote (see `projects/Softela.SCExpert.json`). */
-const REPO_A_REMOTE = "git@dev.azure.com:v3/org/Softela.SCExpert.git";
+/** The real, shipped backend project's own matching remote (see `projects/Softela.PestManagement.json`). */
+const REPO_A_REMOTE = "git@dev.azure.com:v3/org/Softela.PestManagement.git";
 
-/** The real, shipped frontend project's own matching remote (see `projects/Softela.ReactSCExpert.json`). */
-const REPO_B_REMOTE = "https://dev.azure.com/org/Project/_git/Softela.ReactSCExpert";
+/** The real, shipped frontend project's own matching remote (see `projects/Softela.Bugworx.json`). */
+const REPO_B_REMOTE = "https://github.com/trifunov/Softela.Bugworx";
 
 /**
  * Initialises a throwaway git repository with an `origin` remote, so
@@ -87,7 +87,7 @@ suite("lib/context-shell-anchor", ({ test, eq, ok, tmpdir }) => {
     const ctx = buildContext(shellPayload("cd RepoA && npx tsc --noEmit", parent), { agent: "claude" });
 
     eq(ctx.cwd, repoA);
-    eq(ctx.project.id, "Softela.SCExpert");
+    eq(ctx.project.id, "Softela.PestManagement");
     eq(normalizeForRepoRootCompare(ctx.git.repoRoot), normalizeForRepoRootCompare(repoA));
   });
 
@@ -100,7 +100,7 @@ suite("lib/context-shell-anchor", ({ test, eq, ok, tmpdir }) => {
     const ctx = buildContext(shellPayload('git -C RepoB commit -m "x"', parent), { agent: "claude" });
 
     eq(ctx.cwd, repoB);
-    eq(ctx.project.id, "Softela.ReactSCExpert");
+    eq(ctx.project.id, "Softela.Bugworx");
     eq(normalizeForRepoRootCompare(ctx.git.repoRoot), normalizeForRepoRootCompare(repoB));
   });
 
@@ -113,7 +113,7 @@ suite("lib/context-shell-anchor", ({ test, eq, ok, tmpdir }) => {
     const ctx = buildContext(shellPayload("npm --prefix RepoA run build", parent), { agent: "claude" });
 
     eq(ctx.cwd, repoA);
-    eq(ctx.project.id, "Softela.SCExpert");
+    eq(ctx.project.id, "Softela.PestManagement");
     eq(normalizeForRepoRootCompare(ctx.git.repoRoot), normalizeForRepoRootCompare(repoA));
   });
 
@@ -131,7 +131,7 @@ suite("lib/context-shell-anchor", ({ test, eq, ok, tmpdir }) => {
     // this operation anchors on is that containing directory, not the
     // repository root — `git.repoRoot` is what walks back up to `repoB`.
     eq(ctx.cwd, repoBSrc);
-    eq(ctx.project.id, "Softela.ReactSCExpert");
+    eq(ctx.project.id, "Softela.Bugworx");
     eq(normalizeForRepoRootCompare(ctx.git.repoRoot), normalizeForRepoRootCompare(repoB));
   });
 
@@ -172,7 +172,7 @@ suite("lib/context-shell-anchor", ({ test, eq, ok, tmpdir }) => {
     });
 
     eq(ctx.cwd, target.split("/").join(path.sep));
-    eq(ctx.project.id, "Softela.SCExpert");
+    eq(ctx.project.id, "Softela.PestManagement");
   });
 
   test("a plain command with no directory keeps today's behaviour exactly: cwd stays the payload's own cwd", () => {
@@ -202,6 +202,6 @@ suite("lib/context-shell-anchor", ({ test, eq, ok, tmpdir }) => {
     const ctx = buildContext(payload, { agent: "claude" });
 
     eq(ctx.cwd, repoB);
-    eq(ctx.project.id, "Softela.ReactSCExpert");
+    eq(ctx.project.id, "Softela.Bugworx");
   });
 });

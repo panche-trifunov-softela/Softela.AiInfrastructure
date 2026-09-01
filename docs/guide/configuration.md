@@ -59,7 +59,7 @@ Two worked examples, taken from this repository's own `projects/`:
 
 | File | What it does | Why |
 |---|---|---|
-| `Softela.SCExpert.json` | `"stack": "backend"`, no `rules` section | The stack alone keeps frontend-only rules out; no blunt switch needed. An earlier version used `rules.groups.code = off`, which was too blunt — it also silenced the stack-agnostic code rules the team agreed apply here too. |
+| `Softela.PestManagement.json` | `"stack": "backend"`, no `rules` section | The stack alone keeps frontend-only rules out; no blunt switch needed. An earlier version used `rules.groups.code = off`, which was too blunt — it also silenced the stack-agnostic code rules the team agreed apply here too. |
 | `Softela.AiInfrastructure.json` | `rules.groups.code = off` | This repository is developer infrastructure, not a product — there is no component tree or API layer for those rules to check. `git`, `agent`, and every protected path stay on: those protect *this* repository from an agent editing it. |
 
 ## Softening a rule for yourself only
@@ -74,7 +74,7 @@ Your own machine, never reviewed by anyone: `<agentHome>/.softela-ai/overrides.j
     "colocated-tests":    { "action": "off" }
   },
   "projects": {
-    "Softela.ReactSCExpert": { "rules": { "file-size-limit": { "action": "off" } } }
+    "Softela.Bugworx": { "rules": { "file-size-limit": { "action": "off" } } }
   }
 }
 ```

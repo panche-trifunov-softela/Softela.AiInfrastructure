@@ -59,7 +59,7 @@ const WITH_SWITCHES = {
 };
 
 /**
- * The real `Softela.ReactSCExpert` shape this rule was built for: a named
+ * The tracked-config shape this rule was built for: a named
  * local-host constant that `allowedLines` deliberately tolerates, next to a
  * boolean flag that is the actual local/deployed switch.
  */
@@ -526,18 +526,18 @@ suite("guards/local-config-isolation", ({ test, eq }) => {
       want: "pass",
     },
 
-    // --- the real Softela.ReactSCExpert shape: a tolerated local-host
+    // --- the tracked-config shape: a tolerated local-host
     // constant next to a boolean local/deployed switch
 
     {
-      label: "[ReactSCExpert shape] the tolerated LOCAL_*_ORIGIN constant with USE_LOCAL_API false is clean",
+      label: "[tracked-config shape] the tolerated LOCAL_*_ORIGIN constant with USE_LOCAL_API false is clean",
       command: "git commit -am wip",
       project: REACT_SCEXPERT_ENTRY,
       files: { "/repo/src/config/env.ts": REACT_SCEXPERT_CLEAN_CONTENT },
       want: "pass",
     },
     {
-      label: "[ReactSCExpert shape] flipping USE_LOCAL_API to true offends and denies",
+      label: "[tracked-config shape] flipping USE_LOCAL_API to true offends and denies",
       command: "git commit -am wip",
       project: REACT_SCEXPERT_ENTRY,
       files: { "/repo/src/config/env.ts": REACT_SCEXPERT_OFFENDING_CONTENT },

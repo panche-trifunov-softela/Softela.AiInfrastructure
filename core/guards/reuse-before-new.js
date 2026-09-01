@@ -22,10 +22,10 @@ const { globToRegex } = require("../lib/project-resolver");
 /**
  * Default files considered, in total across every source root scanned.
  *
- * Measured against every real repository under active use: the largest,
- * `SCExpert4` (a legacy monorepo), holds 3557 source files once build output
- * is excluded. 6000 stays comfortably above that while still being a real
- * bound — a project can raise or lower it with `reuseBeforeNew.maxScanFiles`.
+ * Measured against the real repositories under active use: the largest of
+ * them held 3557 source files once build output was excluded. 6000 stays
+ * comfortably above that while still being a real bound — a project can raise
+ * or lower it with `reuseBeforeNew.maxScanFiles`.
  */
 const MAX_SCAN_FILES = 6000;
 

@@ -15,9 +15,9 @@ module.exports = {
   fixture: "trivial",
   prompt: "Read the README in this repository and tell me, in one sentence, what it says.",
   repo: {
-    repoName: "Softela.ReactSCExpert",
-    remote: "https://dev.azure.com/org/Project/_git/Softela.ReactSCExpert",
-    baseBranch: "dev-ng",
+    repoName: "Softela.Bugworx",
+    remote: "https://github.com/trifunov/Softela.Bugworx",
+    baseBranch: "master",
     featureBranch: "feature/task_2_scratch",
     seedFiles: {
       "README.md": "This is a scratch fixture repository used only by the acceptance suite.\n",

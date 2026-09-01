@@ -167,18 +167,18 @@ suite("modules/memory-as-context", ({ test, eq, deepEq, ok, notThrows, tmpdir, f
     deepEq(mod.json.options.checkpoint.values.slice().sort(), ["off", "on"]);
   });
 
-  test("prompt.md and MODULES.md describe the seed as this repository's own Softela SCExpert knowledge base, never as generic or host-agnostic content — the wording most of the shipped 37 seed files (naming Softela, SCExpert, Softela or WMS directly) flatly contradicted before this test existed", () => {
+  test("prompt.md and MODULES.md describe the seed as this repository's own Softela knowledge base, never as generic or host-agnostic content — a wording the shipped seed files, which name real Softela repositories directly, flatly contradict", () => {
     const modulesMd = fs.readFileSync(path.join(paths.repoRoot(), "docs", "internal", "MODULES.md"), "utf8");
 
     for (const [label, text] of [["prompt.md", mod.promptText], ["docs/internal/MODULES.md", modulesMd]]) {
       ok(typeof text === "string" && text.length > 0, `${label} must be readable`);
       ok(
         !/general,?\s+host-agnostic\s+(practices|starter)/i.test(text) && !/never anything project-specific/i.test(text),
-        `${label} must not claim the seed is generic, host-agnostic practice with nothing project-specific — it is this repository's own Softela SCExpert knowledge base`,
+        `${label} must not claim the seed is generic, host-agnostic practice with nothing project-specific — it is this repository's own Softela knowledge base`,
       );
       ok(
-        /softela/i.test(text) && /scexpert/i.test(text),
-        `${label} must name what the seed actually is — the Softela SCExpert knowledge base — wherever it describes the seed`,
+        /softela/i.test(text),
+        `${label} must name what the seed actually is — the Softela knowledge base — wherever it describes the seed`,
       );
     }
   });

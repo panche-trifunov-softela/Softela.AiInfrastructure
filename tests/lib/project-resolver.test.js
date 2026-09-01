@@ -158,30 +158,30 @@ suite("lib/project-resolver", ({ test, eq, ok, deepEq, tmpdir, fixture }) => {
 
   test("an SSH remote resolves to the matching project", () => {
     const dir = tmpdir();
-    initRepo(dir, "git@dev.azure.com:v3/org/Softela.ReactSCExpert.git");
+    initRepo(dir, "https://github.com/trifunov/Softela.Bugworx.git");
     const project = resolveProject(dir, { projectsDir: REAL_PROJECTS_DIR });
-    eq(project.id, "Softela.ReactSCExpert");
+    eq(project.id, "Softela.Bugworx");
   });
 
   test("a plain HTTPS remote resolves to the same project", () => {
     const dir = tmpdir();
-    initRepo(dir, "https://dev.azure.com/org/Softela.ReactSCExpert");
+    initRepo(dir, "https://github.com/trifunov/Softela.Bugworx");
     const project = resolveProject(dir, { projectsDir: REAL_PROJECTS_DIR });
-    eq(project.id, "Softela.ReactSCExpert");
+    eq(project.id, "Softela.Bugworx");
   });
 
   test("an Azure DevOps _git remote resolves to the same project", () => {
     const dir = tmpdir();
-    initRepo(dir, "https://org@dev.azure.com/org/Softela.ReactSCExpert/_git/Softela.ReactSCExpert");
+    initRepo(dir, "https://org@dev.azure.com/org/Bugworx/_git/Softela.Bugworx");
     const project = resolveProject(dir, { projectsDir: REAL_PROJECTS_DIR });
-    eq(project.id, "Softela.ReactSCExpert");
+    eq(project.id, "Softela.Bugworx");
   });
 
   test("the backend repository resolves by its own remote", () => {
     const dir = tmpdir();
-    initRepo(dir, "git@dev.azure.com:v3/org/Softela.SCExpert.git");
+    initRepo(dir, "git@dev.azure.com:v3/org/Softela.PestManagement.git");
     const project = resolveProject(dir, { projectsDir: REAL_PROJECTS_DIR });
-    eq(project.id, "Softela.SCExpert");
+    eq(project.id, "Softela.PestManagement");
   });
 
   test("an unknown remote falls back to _default", () => {

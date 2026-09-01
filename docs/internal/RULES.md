@@ -621,7 +621,7 @@ otherwise both), build-output directories are skipped (`bin`, `obj`, `dist`,
 `build`, `out`, `target`, `coverage`, `packages`, `TestResults`, `.vs`,
 `.idea`, `.next`, `.turbo`, `.venv`, `__pycache__`, `vendor`), and the total
 is capped at 6000 files by default — comfortably above the largest measured
-real repository (`SCExpert4`, 3557 source files) — overridable per project
+real repository, at 3557 source files — overridable per project
 with `reuseBeforeNew.maxScanFiles`. Results are cached per process, keyed by
 the roots, the extension filter and the bound together. If the scan cannot
 complete within the bound it passes, because "reuse" is a judgement and this

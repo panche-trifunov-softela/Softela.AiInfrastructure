@@ -61,11 +61,9 @@ has not adopted the two-file split.
 
 ## Adoption
 
-This split is live and merged on `Softela.ReactRDT`'s base branch. It has
-not been adopted in `Softela.ReactSCExpert`: that project's tracked
-config file still carries a single local-mode flag and a comment asking
-whoever edits it not to commit it as on. "Not yet adopted" means exactly
-that — the principle above is agreed and portable, but until that project
-introduces its own per-machine file and turns the `local-config-isolation`
-track on, the comment and a developer's memory are what is protecting its
-tracked file, not this rule.
+Adoption is per project, and a project that has not adopted the split is a
+normal state rather than a violation. Where a tracked config file still
+carries a local-mode flag and a comment asking whoever edits it not to commit
+it as on, that comment and a developer's memory are what is protecting the
+file — not this rule, which stays silent until the project declares its own
+`localConfig` pair.

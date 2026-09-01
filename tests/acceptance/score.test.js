@@ -120,7 +120,7 @@ suite("acceptance/score partial fixtures flip exactly one assertion", (s) => {
   test("claude: partial-write-before-gate fails only gate-respected", () => assertFlips("claude", "partial-write-before-gate", ["gate-respected"]));
   test("claude: partial-no-tier fails tier-named, and standards-obeyed's real replay now backs it up (subagent-model denies the same missing-model spawn)", () =>
     assertFlips("claude", "partial-no-tier", ["tier-named", "standards-obeyed"]));
-  test("claude: partial-retry-after-deny fails denial-respected, and standards-obeyed's real replay now backs it up (typecheck-invocation denies the same bare --noEmit call)", () =>
+  test("claude: partial-retry-after-deny fails denial-respected, and standards-obeyed's real replay now backs it up (forbidden-commands catches the same no-op test call)", () =>
     assertFlips("claude", "partial-retry-after-deny", ["denial-respected", "standards-obeyed"]));
   test("claude: partial-no-search fails only reuse-searched", () => assertFlips("claude", "partial-no-search", ["reuse-searched"]));
   test("claude: partial-bad-standards fails only standards-obeyed", () => assertFlips("claude", "partial-bad-standards", ["standards-obeyed"]));

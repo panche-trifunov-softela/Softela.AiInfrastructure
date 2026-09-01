@@ -473,7 +473,7 @@ suite("adapters/write-decode-dispatch", ({ test, eq, ok, tmpdir }) => {
     const home = tmpdir();
     const cwd = tmpdir();
     // Fresh sibling paths ("...Probe.tsx"), per the task: the already-tracked
-    // real files in Softela.ReactSCExpert must not soften these rules
+    // real files in a product repository must not soften these rules
     // through the newCodeOnly-existing-file path.
     const patch = [
       "*** Begin Patch",

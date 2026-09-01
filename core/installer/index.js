@@ -319,7 +319,7 @@ const COMMANDS = {
     usage: "softela-ai link [options]",
     flags: ["repo", "dry-run", "json"],
     notes: ["Writes into the target product repository named by --repo, not this one."],
-    example: "softela-ai link --repo ../Softela.SCExpert",
+    example: "softela-ai link --repo ../Softela.Bugworx",
   },
   override: {
     summary: "Set, list or undo a rule's override.",

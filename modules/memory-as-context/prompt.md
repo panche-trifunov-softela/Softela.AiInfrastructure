@@ -26,9 +26,9 @@ facts that are already recorded.
 - A write that would remove or reword an INTENT section is intercepted and
   surfaces as a question rather than proceeding silently — appending to an
   INTENT block, or adding a new section elsewhere, is never affected.
-- This module seeds a starter knowledge base — the Softela SCExpert
-  knowledge base this repository is built for, shipped so every developer
-  starts from the same facts instead of re-deriving them — under
+- This module seeds a starter knowledge base — the Softela knowledge base
+  this repository is built for, shipped so every developer starts from the
+  same facts instead of re-deriving them — under
   `<memoryDir>/softela/` on first use, plus an `ACTIVE-WORK.md` stub when none
   exists yet. A file the developer already keeps at the top level under the
   same name always wins: its shipped twin under `softela/` is skipped. An

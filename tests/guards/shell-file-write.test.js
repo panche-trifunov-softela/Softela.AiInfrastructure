@@ -233,7 +233,7 @@ suite("guards/shell-file-write", ({ test, eq, ok }) => {
   });
 
   test("denies sed -i aimed at a .json project config", () => {
-    eq(decide(rule, { command: "sed -i 's/dev-ng/dev/' projects/Softela.ReactSCExpert.json" }), "deny");
+    eq(decide(rule, { command: "sed -i 's/master/main/' projects/Softela.Bugworx.json" }), "deny");
   });
 
   test("denies a redirect into a module.json file", () => {

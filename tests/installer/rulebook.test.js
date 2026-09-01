@@ -271,7 +271,7 @@ suite("installer/rulebook", ({ test, eq, ok, fakeHome }) => {
     const codexBody = rulebook.buildRulebookBody("codex", { enabledModuleIds: ALL_PROMPT_MODULES });
     const claudeBody = rulebook.buildRulebookBody("claude", { enabledModuleIds: ALL_PROMPT_MODULES });
     ok(codexBody.includes("## Concrete facts, by repository") && claudeBody.includes("## Concrete facts, by repository"));
-    ok(codexBody.includes("Softela.ReactSCExpert") && claudeBody.includes("Softela.ReactSCExpert"));
+    ok(codexBody.includes("Softela.Bugworx") && claudeBody.includes("Softela.Bugworx"));
     for (const rule of REGISTERED_RULES) {
       ok(
         codexBody.includes(`\`${rule.id}\``) === claudeBody.includes(`\`${rule.id}\``),

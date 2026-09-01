@@ -130,8 +130,8 @@ suite("lib/config-merge", ({ test, eq, deepEq }) => {
   /* -------------------------------------------------------- not inherited */
 
   test("id is never inherited — a merged project keeps its own identity and its own overrides", () => {
-    const merged = mergeConfigLayer({ id: "_default" }, { id: "Softela.SCExpert" });
-    eq(merged.id, "Softela.SCExpert");
+    const merged = mergeConfigLayer({ id: "_default" }, { id: "Softela.PestManagement" });
+    eq(merged.id, "Softela.PestManagement");
   });
 
   test("match is never inherited — otherwise every repository would match every project file", () => {
@@ -191,7 +191,7 @@ suite("lib/config-merge", ({ test, eq, deepEq }) => {
     const defaults = loadDefaultProject({ projectsDir: PROJECTS_DIR });
     const inherited = defaults.protectedPaths.map((entry) => entry.path);
 
-    for (const file of ["Softela.SCExpert", "Softela.ReactSCExpert", "Softela.ReactRDT", "Softela.AiInfrastructure"]) {
+    for (const file of ["Softela.PestManagement", "Softela.Bugworx", "Softela.AiInfrastructure"]) {
       const merged = mergeConfigLayer(defaults, readJson(path.join(PROJECTS_DIR, `${file}.json`)));
       for (const target of inherited) {
         eq(paths(merged).includes(target), true, `${file} lost the inherited protection for ${target}`);
@@ -201,7 +201,7 @@ suite("lib/config-merge", ({ test, eq, deepEq }) => {
 
   test("no shipped project config protects src/pages/Home.tsx — the rule that reached every session by mistake", () => {
     const defaults = loadDefaultProject({ projectsDir: PROJECTS_DIR });
-    for (const file of ["Softela.SCExpert", "Softela.ReactSCExpert", "Softela.ReactRDT", "Softela.AiInfrastructure"]) {
+    for (const file of ["Softela.PestManagement", "Softela.Bugworx", "Softela.AiInfrastructure"]) {
       const merged = mergeConfigLayer(defaults, readJson(path.join(PROJECTS_DIR, `${file}.json`)));
       eq(paths(merged).includes("src/pages/Home.tsx"), false, `${file} still carries it`);
     }

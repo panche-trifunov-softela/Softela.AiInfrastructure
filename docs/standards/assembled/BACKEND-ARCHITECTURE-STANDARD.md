@@ -40,13 +40,10 @@ two tables ([`git-flow.md`](./git-flow.md),
 
 It grew out of an architecture sync where a frontend team reviewed and agreed
 a draft standard. What follows is the part of that draft which is (a) true
-for any project and (b) settled rather than still being argued about. A
-second, repository-bound document, written separately, carries the
-project-specific facts — current file sizes, real folder names, a migration
-backlog — that do not belong here. See
-[`EXCLUDED-FROM-SOURCE.md`](./EXCLUDED-FROM-SOURCE.md) for exactly what was
-left out of this portable version, and why, and
-[`ONBOARDING.md`](./ONBOARDING.md) for where to start reading.
+for any project and (b) settled rather than still being argued about.
+Project-specific facts — current file sizes, real folder names, a migration
+backlog — belong in that project's own `docs/projects/<name>/` folder, never
+here. See [`ONBOARDING.md`](./ONBOARDING.md) for where to start reading.
 
 ## Status and provenance
 
@@ -110,9 +107,8 @@ Each document opens with one of these:
   scheduled after the higher-priority work. Not a rejection and not
   optional forever — just not now. Only [`api-layer.md`](./api-layer.md)
   carries this label.
-- Anything still under real disagreement — styling strategy, extracting
-  services into a shared library, micro-frontends — is **not** in this
-  directory at all. It is being tracked in `docs/OPEN-DECISIONS.md`, and
+- Anything still under real disagreement — styling strategy, for one — is
+  **not** in this directory at all. It is being tracked in `docs/OPEN-DECISIONS.md`, and
   nothing here should be read as a ruling on it.
 
 ## The documents
@@ -267,11 +263,8 @@ untyped calls.
 
 Not settled, and therefore not a rule in any of these documents:
 
-- Styling strategy — a single co-located stylesheet convention versus the
-  current mixed approach.
-- Extracting components or services into a shared library, and how that
-  library's API should be shaped.
-- Micro-frontends.
+- Styling strategy — a single co-located stylesheet convention versus
+  whatever mix a project currently has.
 
 These are tracked in `docs/OPEN-DECISIONS.md`. If a document in this
 directory appears to take a position on one of them, that is a defect in the
@@ -1136,9 +1129,8 @@ forbidden** — a guard may prompt before it, not deny it.
 
 ## Base branches are per-repository configuration
 
-There is no single, organisation-wide base branch. `Softela.ReactSCExpert`
-uses `dev-ng`; `Softela.SCExpert` uses `dev`; another repository may use
-something else entirely. A guard, a skill, or a piece of documentation that
+There is no single, organisation-wide base branch. One repository uses
+`master`; another may use `main`, `dev`, or something else entirely. A guard, a skill, or a piece of documentation that
 hard-codes a base branch name is wrong by construction — it must read the
 base from that repository's `projects/<RepositoryName>.json`. See
 `docs/projects/*/README.md` for what each repository currently uses.

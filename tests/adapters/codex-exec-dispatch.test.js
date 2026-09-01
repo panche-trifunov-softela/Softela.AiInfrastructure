@@ -24,7 +24,7 @@ function execPayload(source, cwd) {
 
 /**
  * Creates a disposable git repository whose `origin` remote matches this
- * repository's own real `projects/Softela.ReactSCExpert.json`, so a real
+ * repository's own real `projects/Softela.Bugworx.json`, so a real
  * dispatcher run resolves that project's actual `frontend` stack and
  * `componentFolders` convention — the same way a real Codex session working
  * inside that repository would, and the only way to prove
@@ -37,7 +37,7 @@ function execPayload(source, cwd) {
 function frontendRepo(tmpdir) {
   const dir = tmpdir();
   execFileSync("git", ["init", "-q"], { cwd: dir });
-  execFileSync("git", ["remote", "add", "origin", "https://dev.azure.com/org/Project/_git/Softela.ReactSCExpert"], {
+  execFileSync("git", ["remote", "add", "origin", "https://github.com/trifunov/Softela.Bugworx"], {
     cwd: dir,
   });
   return dir;
@@ -71,13 +71,13 @@ suite("adapters/codex-exec-dispatch", ({ test, eq, ok, tmpdir }) => {
     // both paths share `write-decode.js`'s own existence invariant instead.
     const home = tmpdir();
     const repo = frontendRepo(tmpdir);
-    const filePath = path.join(repo, "src/types/GhostProbe.ts");
+    const filePath = path.join(repo, "react-app/src/types/GhostProbe.ts");
     fs.mkdirSync(path.dirname(filePath), { recursive: true });
     fs.writeFileSync(filePath, "export type Foo = {\n};\n", "utf8");
 
     const patchBodyLines = [
       "*** Begin Patch",
-      "*** Update File: src/types/GhostProbe.ts",
+      "*** Update File: react-app/src/types/GhostProbe.ts",
       " export type Foo = {",
       "*** Update File: outside/Ghost.ts",
       "+  bad: any;",
@@ -112,13 +112,13 @@ suite("adapters/codex-exec-dispatch", ({ test, eq, ok, tmpdir }) => {
   test("C1: the same clean any-addition, wrapped in exec with no ghost header, still denies through the shared parser", () => {
     const home = tmpdir();
     const repo = frontendRepo(tmpdir);
-    const filePath = path.join(repo, "src/types/CleanProbe.ts");
+    const filePath = path.join(repo, "react-app/src/types/CleanProbe.ts");
     fs.mkdirSync(path.dirname(filePath), { recursive: true });
     fs.writeFileSync(filePath, "export type Foo = {\n};\n", "utf8");
 
     const patchBodyLines = [
       "*** Begin Patch",
-      "*** Update File: src/types/CleanProbe.ts",
+      "*** Update File: react-app/src/types/CleanProbe.ts",
       " export type Foo = {",
       "+  bad: any;",
       " };",
@@ -151,7 +151,7 @@ suite("adapters/codex-exec-dispatch", ({ test, eq, ok, tmpdir }) => {
     // through `tools.apply_patch(patch)`.
     const source = [
       'const patch = "*** Begin Patch\\n' +
-        "*** Add File: src/components/Widget/index.ts\\n" +
+        "*** Add File: react-app/src/components/Widget/index.js\\n" +
         "+export const secret = computeSecret();\\n" +
         '*** End Patch";',
       "const result = await tools.apply_patch(patch);",
@@ -166,7 +166,7 @@ suite("adapters/codex-exec-dispatch", ({ test, eq, ok, tmpdir }) => {
     const reason = result.parsed.hookSpecificOutput.permissionDecisionReason;
     ok(reason.includes("barrel-exports-only"), "reason should name the rule that actually fired");
     ok(reason.includes("apply_patch"), "reason should name the nested operation that caused the denial");
-    ok(reason.includes("src/components/Widget/index.ts"), "reason should name the file the nested write targeted");
+    ok(reason.includes("react-app/src/components/Widget/index.js"), "reason should name the file the nested write targeted");
   });
 
   /* -------------------------------------------------------- reasoning effort */
