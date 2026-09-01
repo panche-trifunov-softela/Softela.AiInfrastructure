@@ -49,6 +49,11 @@
       "path": "**/.npmrc",
       "action": "ask",
       "reason": "holds registry authentication tokens"
+    },
+    {
+      "path": "**/appsettings*.json",
+      "action": "ask",
+      "reason": "a .NET settings file is where a connection string, an API key or a client secret ends up, and unlike a .env it is normally tracked — so a value written here reaches everyone who pulls"
     }
   ],
 

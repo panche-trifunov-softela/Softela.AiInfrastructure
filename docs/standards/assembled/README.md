@@ -8,7 +8,8 @@ down.
 | Document | What it covers |
 | --- | --- |
 | [`FRONTEND-ARCHITECTURE-STANDARD.md`](./FRONTEND-ARCHITECTURE-STANDARD.md) | The frontend rulebook, end to end: principles, folder shape, layer boundaries, naming, size, state, types, the API layer, documentation, testing, git flow and the migration approach. |
-| [`CODE-DOCUMENTATION-STANDARD.md`](./CODE-DOCUMENTATION-STANDARD.md) | How code documents itself, on its own, for a reader who is not reading the frontend standard. |
+| [`BACKEND-ARCHITECTURE-STANDARD.md`](./BACKEND-ARCHITECTURE-STANDARD.md) | The backend rulebook, end to end: the four projects and the dependency rule, the use-case folder shape, the transaction envelope and the outbox, data access, migrations, documentation and git flow. |
+| [`CODE-DOCUMENTATION-STANDARD.md`](./CODE-DOCUMENTATION-STANDARD.md) | How code documents itself, on its own, for a reader who is not reading either architecture standard. |
 
 ## Do not edit anything in this folder
 
@@ -34,6 +35,7 @@ means the difference is visible from the path, rather than from noticing
 which filenames happen to be upper-case.
 
 One part can feed more than one document. `code-documentation.md` is a
-section of the frontend standard *and* the whole of the documentation
-standard; editing it once updates both, and neither ever holds a
-hand-maintained copy of the other.
+section of the frontend standard, a section of the backend one, *and* the
+whole of the documentation standard; editing it once updates all three, and
+none ever holds a hand-maintained copy of another. `README.md`,
+`principles.md` and `git-flow.md` are shared the same way.

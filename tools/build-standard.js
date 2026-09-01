@@ -82,6 +82,32 @@ const DOCUMENTS = [
     ],
   },
   {
+    key: "backend-architecture",
+    title: "Backend Architecture Standard",
+    outputFile: path.join(ASSEMBLED_DIR, "BACKEND-ARCHITECTURE-STANDARD.md"),
+    /**
+     * The backend counterpart, in its own reading order: the project layout
+     * and the dependency rule first, because everything after it depends on
+     * knowing which project a thing belongs in; then the use-case shape and
+     * its transaction rules; then data access and migrations. The shared
+     * parts follow — documentation, git flow — exactly as the frontend
+     * document ends with its own.
+     *
+     * `README.md` deliberately leads this one too: it is the index for both
+     * stacks, and it carries the MUST/SHOULD/MAY key and the scope-of-
+     * enforcement rules that every section below is written against.
+     */
+    sectionOrder: [
+      "README.md",
+      "principles.md",
+      "backend-architecture.md",
+      "backend-use-cases.md",
+      "backend-data-access.md",
+      "code-documentation.md",
+      "git-flow.md",
+    ],
+  },
+  {
     key: "code-documentation",
     title: "Code Documentation Standard",
     outputFile: path.join(ASSEMBLED_DIR, "CODE-DOCUMENTATION-STANDARD.md"),

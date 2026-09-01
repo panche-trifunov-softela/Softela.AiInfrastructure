@@ -9,6 +9,13 @@
   },
 
   "baseBranches": ["master"],
+  "releaseBranchPattern": "^releases/",
+
+  "branchNaming": {
+    "pattern": "^(feature|bugfix|fix|hotfix)/((task|ticket)[_-])?[A-Za-z0-9][\\w.-]*$",
+    "action": "ask",
+    "preferred": "feature/short-description"
+  },
 
   "immutableMigrations": [
     {
@@ -16,5 +23,22 @@
       "action": "deny",
       "reason": "Evolve records a versioned script by version and checksum once it has run, so editing one that already exists makes the next migration fail against every database that has already applied it, while still passing against a fresh one"
     }
-  ]
+  ],
+
+  "commands": {
+    "forbidden": [
+      {
+        "pattern": "\\bdotnet\\s+ef\\b",
+        "action": "deny",
+        "reason": "this service has no EF model — the schema is owned by the Evolve scripts under Database/Scripts, and an EF migration would describe a database nothing here applies"
+      },
+      {
+        "pattern": "\\bazd\\s+(up|provision|deploy)\\b",
+        "action": "ask",
+        "reason": "azd provisions and deploys billable Azure infrastructure from the local machine; deployment runs from the pipeline"
+      }
+    ]
+  },
+
+  "memoryLocation": "infrastructure"
 }

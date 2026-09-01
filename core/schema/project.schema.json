@@ -176,6 +176,30 @@
         "contractTypes": { "type": "string" },
         "sourceRoots": { "type": "array", "items": { "type": "string" } },
         "language": { "type": "string" },
+        "layers": {
+          "type": "array",
+          "minItems": 2,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["name", "paths", "token"],
+            "properties": {
+              "name": { "type": "string", "minLength": 1 },
+              "paths": { "type": "array", "items": { "type": "string" }, "minItems": 1 },
+              "token": { "type": "string", "minLength": 1 }
+            }
+          }
+        },
+        "transactions": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "scope": { "type": "string" },
+            "outboxInsert": { "type": "string" },
+            "beginTransaction": { "type": "string" },
+            "commit": { "type": "string" }
+          }
+        },
         "pathAliases": {
           "type": "object",
           "additionalProperties": { "type": "string" }
@@ -224,6 +248,7 @@
         "hook-locality",
         "immutable-migrations",
         "infra-self-protection",
+        "layer-dependencies",
         "local-config-isolation",
         "naming-standards",
         "no-edit-generated-docs",
@@ -241,6 +266,7 @@
         "shell-file-write",
         "subagent-model",
         "test-structure",
+        "transactional-outbox",
         "typecheck-invocation"
       ]
     },

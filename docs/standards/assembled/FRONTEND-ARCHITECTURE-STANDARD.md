@@ -8,7 +8,7 @@
 
 ## Contents
 
-1. [Frontend architecture standards](#frontend-architecture-standards)
+1. [Architecture standards](#architecture-standards)
 2. [Why this exists](#why-this-exists)
 3. [Principles](#principles)
 4. [Shared code boundaries](#shared-code-boundaries)
@@ -28,17 +28,25 @@
 
 ---
 
-# Frontend architecture standards
+# Architecture standards
 
 Status: Index — see [Status and provenance](#status-and-provenance) below;
 each document also carries its own status line.
 
-This is the portable rulebook for how frontend code is structured: how a
-component is laid out on disk, where state lives, how things are typed,
-tested and reused. It applies to any project this infrastructure is
-installed into, not to one specific repository — there are no real paths,
-store names or file names in it, only shapes (`src/components/**`) that any
-project can match against its own root.
+This is the portable rulebook for how code is structured, on both stacks:
+how a component or a use case is laid out on disk, where state lives, how
+things are typed, tested and reused. It applies to any project this
+infrastructure is installed into, not to one specific repository — there are
+no real paths, store names or file names in it, only shapes
+(`src/components/**`, `*.Application/**`) that any project can match against
+its own root.
+
+The directory grew up frontend-first, and most of it below still is. The
+three backend documents are newer and carry their own table — see
+[The backend documents](#the-backend-documents). Everything outside those
+two tables ([`git-flow.md`](./git-flow.md),
+[`code-documentation.md`](./code-documentation.md),
+[`clean-code.md`](./clean-code.md)) applies to both stacks.
 
 It grew out of an architecture sync where a frontend team reviewed and agreed
 a draft standard. What follows is the part of that draft which is (a) true
@@ -137,6 +145,29 @@ Each document opens with one of these:
 | [`agent-rules.md`](./agent-rules.md) | Active | Rules for an AI agent working in the repository, as distinct from rules about the code it writes. |
 | [`migration-approach.md`](./migration-approach.md) | Active | The general shape of a no-big-bang rollout: phases, the Boy Scout rule, gating new work — without any one project's own backlog. |
 
+## The backend documents
+
+The .NET counterpart to the table above. Same contract: portable shapes, no
+repository's own project names, binding for new code once a project adopts
+them by declaring `"stack": "backend"`.
+
+| Document | Status | Covers |
+| --- | --- | --- |
+| [`backend-architecture.md`](./backend-architecture.md) | Active | The four projects (Domain, Application, Infrastructure, Api), what belongs in each, and the dependency rule: nothing inner references anything outer. Why the repository interfaces live inward. |
+| [`backend-use-cases.md`](./backend-use-cases.md) | Active | One folder per use case and what has to be in it; the command handler's transaction envelope; why the domain event goes inside the transaction; tenant scoping and soft deletes. |
+| [`backend-data-access.md`](./backend-data-access.md) | Active | The repository boundary, calling database functions, snake_case identifiers, offset-carrying timestamps, and versioned versus repeatable migrations. |
+
+Three things the frontend table has no equivalent of, and one it does:
+
+- **File-size thresholds are deliberately unset for the backend.**
+  `file-size-limit` stays frontend-only until a number is actually agreed
+  rather than invented — see `docs/OPEN-DECISIONS.md`.
+- **Co-located tests are a frontend convention.** The backend keeps separate
+  test projects, and `test-structure`'s Arrange-Act-Assert expectation is
+  the backend's own.
+- **`code-documentation.md` already covers both stacks** — its "Backend
+  (.NET)" section is the `/// <summary>` rule, and has been there all along.
+
 Git workflow — branch naming, rebasing, how a change reaches a base
 branch — is covered by [`git-flow.md`](./git-flow.md) in this same
 directory. Unlike the rest of this directory, it documents this
@@ -153,23 +184,30 @@ guard-free; the document itself explains why.
 
 ## Generated documents
 
-Two whole documents are assembled from the files above by
+Three whole documents are assembled from the files above by
 [`tools/build-standard.js`](../../tools/build-standard.js) — nobody edits
-either by hand, and running the script (or its `--check` flag) is how drift
-between a split file and an output is caught:
+any of them by hand, and running the script (or its `--check` flag) is how
+drift between a split file and an output is caught:
 
 - [`FRONTEND-ARCHITECTURE-STANDARD.md`](./assembled/FRONTEND-ARCHITECTURE-STANDARD.md)
-  — every document in the table above, in reading order: the full portable
-  rulebook.
+  — every document in the frontend table above, in reading order: the full
+  portable frontend rulebook.
+- [`BACKEND-ARCHITECTURE-STANDARD.md`](./assembled/BACKEND-ARCHITECTURE-STANDARD.md)
+  — the same for the backend table: the project layout and the dependency
+  rule, the use-case shape, data access and migrations, plus the shared
+  documentation and git-flow parts.
 - [`CODE-DOCUMENTATION-STANDARD.md`](./assembled/CODE-DOCUMENTATION-STANDARD.md) — a
   standalone document assembled from [`code-documentation.md`](./code-documentation.md)
   alone, meant to be handed to a team, a project, or another organisation's
   AI agent that needs only the comment and doc-block rules, without pulling
-  in the rest of this rulebook. `code-documentation.md` itself does not
-  move: it stays section 12 of `FRONTEND-ARCHITECTURE-STANDARD.md`'s own
-  reading order *and* is the sole source of the standalone document, so the
-  two generated files never carry two hand-maintained copies of the same
-  content.
+  in the rest of this rulebook.
+
+A part feeding more than one output never holds a second copy of itself.
+`code-documentation.md` is a section of both architecture standards *and*
+the whole of the documentation standard; `README.md` (this file),
+`principles.md` and `git-flow.md` are shared between the two architecture
+documents the same way. Editing the part once updates every output that
+carries it.
 
 ## The convention this directory follows
 

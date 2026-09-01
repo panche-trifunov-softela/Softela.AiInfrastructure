@@ -406,6 +406,62 @@ pattern (`filePattern`), how a declared database change is recognised
 config, not constants in the guard — and, since `core/schema/project.schema.json`
 now declares this key, a repository can actually ship it.
 
+### `layer-dependencies` · deny · `stacks: ["backend"]` · `requiresConfig: ["conventions.layers"]`
+Backend only. Denies a reference pointing outward through the layer
+ordering — the domain reaching into the application layer, the application
+layer into infrastructure. The load-bearing rule of
+`docs/standards/backend-architecture.md`, and the one that decays silently:
+a violation costs nothing the day it is written and permanently removes the
+ability to test a use case without a database.
+
+Both spellings are checked: a `using` directive in a `.cs` file (including
+`global`, `static` and alias forms) and a `ProjectReference` in a `.csproj`.
+The `using` is the one that actually happens, since an IDE quick-fix adds it
+while the developer is thinking about something else.
+
+`conventions.layers` is an ordered list, innermost first, each entry naming
+itself, the path globs that place a file in it, and the namespace segment
+(`token`) identifying a reference to it. A file in layer `i` may reference
+`0..i`. No project or namespace name appears in the guard.
+
+A reference is matched by whole delimited segment, never substring, so
+`Microsoft.ApplicationInsights` does not read as the `Application` layer.
+A file in no configured layer — a host or test project — has no ordering to
+break and passes.
+
+- deny: `using *.Application.*` from a Domain file, a `ProjectReference` to
+  the API project from Infrastructure
+- pass: every inward and same-layer reference, framework namespaces, a
+  commented-out `using`, a file outside the configured layers
+- reads: `ctx.content` only, so an `Edit` elsewhere in a file whose imports
+  predate the standard matches nothing; `newCodeOnly` covers the remaining
+  whole-file-`Write` case, as `api-import-boundary` does on the frontend
+
+### `transactional-outbox` · deny · `stacks: ["backend"]` · `requiresConfig: ["conventions.transactions.outboxInsert", "conventions.transactions.beginTransaction"]`
+Backend only. Denies a domain event written to the outbox outside the
+transaction carrying the data change it describes — either with no
+transaction at all, or after the commit. Both produce a silently wrong
+result rather than a failure: the row lands and the event never does, so
+nothing downstream learns the change happened.
+
+**This rule cannot judge the inserted fragment alone.** A plain `Edit`
+adding one outbox line reports only that line, with the surrounding
+`BeginTransactionAsync` elsewhere in the file — denying on that would block
+every edit to a correct handler, which is how a rule gets switched off. The
+file is reconstructed in the first way available: `ctx.resultingContent`;
+else `ctx.content` when the tool writes a whole file by definition; else the
+on-disk text plus the inserted text. The ordering check needs true offsets
+in one coherent text, so it runs only under the first two; under the third
+the rule still catches the commoner and worse case.
+
+Only a write that actually introduces an outbox insert is judged.
+
+- deny: an outbox insert with no `BeginTransactionAsync` in the file; an
+  outbox insert positioned after `CommitAsync`
+- pass: an edit inside a handler that already opens a transaction, a write
+  introducing no outbox insert, anything outside `conventions.transactions.scope`
+  (a query handler, the outbox processor itself), a non-`.cs` file
+
 ### `immutable-migrations` · from config · `readsChangeScope: true` · `requiresConfig: ["immutableMigrations"]`
 A versioned database migration is applied once and then recorded by version
 and checksum in the migration tool's own history table. Editing one that has

@@ -2,7 +2,37 @@
   "$schema": "../../core/schema/project.schema.json",
 
   "conventions": {
-    "language": "csharp"
+    "language": "csharp",
+
+    "layers": [
+      {
+        "name": "Domain",
+        "paths": ["**/*.Domain/**"],
+        "token": "Domain"
+      },
+      {
+        "name": "Application",
+        "paths": ["**/*.Application/**"],
+        "token": "Application"
+      },
+      {
+        "name": "Infrastructure",
+        "paths": ["**/*.Infrastructure/**"],
+        "token": "Infrastructure"
+      },
+      {
+        "name": "Api",
+        "paths": ["**/*.API/**", "**/*.Api/**"],
+        "token": "API"
+      }
+    ],
+
+    "transactions": {
+      "scope": "**/Commands/**",
+      "outboxInsert": "_outbox\\w*\\.InsertAsync",
+      "beginTransaction": "\\.BeginTransactionAsync\\b",
+      "commit": "\\.CommitAsync\\b"
+    }
   },
 
   "docCommentStyle": {
