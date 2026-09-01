@@ -361,4 +361,97 @@ suite("guards/hook-locality", ({ test, eq, tmpdir }) => {
       "ask",
     );
   });
+
+  // --- a JavaScript project's shared-hooks root fills up the same way --------
+
+  test("a new .js hook matching an existing .jsx component denies", () => {
+    const repoRoot = seededRepo(tmpdir, ["src/components/Widget/Widget.jsx", "src/components/Widget/index.js"]);
+    eq(
+      decide(rule, {
+        toolName: "Write",
+        filePath: path.join(repoRoot, "src", "hooks", "useWidget.js"),
+        git: { repoRoot },
+        project: { conventions: { ...CONVENTIONS, language: "javascript" } },
+      }),
+      "deny",
+    );
+  });
+
+  test("a new .jsx hook matching an existing .jsx component denies", () => {
+    const repoRoot = seededRepo(tmpdir, ["src/components/Widget/Widget.jsx"]);
+    eq(
+      decide(rule, {
+        toolName: "Write",
+        filePath: path.join(repoRoot, "src", "hooks", "useWidget.jsx"),
+        git: { repoRoot },
+        project: { conventions: { ...CONVENTIONS, language: "javascript" } },
+      }),
+      "deny",
+    );
+  });
+
+  test("a .js hook with no component of that name anywhere passes", () => {
+    const repoRoot = seededRepo(tmpdir, ["src/components/Widget/Widget.jsx"]);
+    eq(
+      decide(rule, {
+        toolName: "Write",
+        filePath: path.join(repoRoot, "src", "hooks", "useDebounce.js"),
+        git: { repoRoot },
+        project: { conventions: { ...CONVENTIONS, language: "javascript" } },
+      }),
+      "pass",
+    );
+  });
+
+  test("a .js hook already inside its own component's folder passes", () => {
+    const repoRoot = seededRepo(tmpdir, ["src/components/Widget/Widget.jsx"]);
+    eq(
+      decide(rule, {
+        toolName: "Write",
+        filePath: path.join(repoRoot, "src", "components", "Widget", "useWidget.js"),
+        git: { repoRoot },
+        project: { conventions: { ...CONVENTIONS, language: "javascript" } },
+      }),
+      "pass",
+    );
+  });
+
+  test("a .js name that merely shares a prefix with a component passes", () => {
+    const repoRoot = seededRepo(tmpdir, ["src/components/WidgetBar/WidgetBar.jsx"]);
+    eq(
+      decide(rule, {
+        toolName: "Write",
+        filePath: path.join(repoRoot, "src", "hooks", "useWidget.js"),
+        git: { repoRoot },
+        project: { conventions: { ...CONVENTIONS, language: "javascript" } },
+      }),
+      "pass",
+    );
+  });
+
+  test("a non-hook .js file written into the shared-hooks root passes", () => {
+    const repoRoot = seededRepo(tmpdir, ["src/components/Widget/Widget.jsx"]);
+    eq(
+      decide(rule, {
+        toolName: "Write",
+        filePath: path.join(repoRoot, "src", "hooks", "widgetDefaults.js"),
+        git: { repoRoot },
+        project: { conventions: { ...CONVENTIONS, language: "javascript" } },
+      }),
+      "pass",
+    );
+  });
+
+  test("a .js spec for a shared hook is not itself a hook", () => {
+    const repoRoot = seededRepo(tmpdir, ["src/components/Widget/Widget.jsx"]);
+    eq(
+      decide(rule, {
+        toolName: "Write",
+        filePath: path.join(repoRoot, "src", "hooks", "useWidget.test.js"),
+        git: { repoRoot },
+        project: { conventions: { ...CONVENTIONS, language: "javascript" } },
+      }),
+      "pass",
+    );
+  });
 });

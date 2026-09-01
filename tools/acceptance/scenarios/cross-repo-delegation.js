@@ -40,7 +40,7 @@ module.exports = {
   // every `requiresModule`-gated guard (`subagent-model`,
   // `reasoning-effort-floor`) is silently invisible to it regardless of what a
   // real session would actually have enabled (finding S1b).
-  modules: ["agent-orchestration", "analyze-first", "memory-as-context"],
+  modules: ["agent-orchestration", "analyze-first", "frontend-workflows", "memory-as-context"],
   assertions: [
     "memory-written",
     "read-before-write",

@@ -63,6 +63,65 @@ suite("lib/project-resolver", ({ test, eq, ok, deepEq, tmpdir, fixture }) => {
     eq(globToRegex("projects/**.json").test("other/a.json"), false);
   });
 
+  // A config field takes exactly one glob, so a project whose components
+  // legitimately live under several roots needs alternation to say so.
+  test("a brace group matches any of its branches", () => {
+    const re = globToRegex("react-app/src/{components,pages,layouts}/**");
+    for (const target of [
+      "react-app/src/components/Common/Table/Table.jsx",
+      "react-app/src/pages/Customers.jsx",
+      "react-app/src/layouts/Header.jsx",
+    ]) {
+      ok(re.test(target), `the alternation must match ${target}`);
+    }
+  });
+
+  test("a brace group matches nothing outside its branches", () => {
+    const re = globToRegex("react-app/src/{components,pages,layouts}/**");
+    for (const target of [
+      "react-app/src/utils/format.js",
+      "react-app/src/services/api.js",
+      "react-app/src/componentsX/A.jsx",
+      "other/src/components/A.jsx",
+    ]) {
+      eq(re.test(target), false, `the alternation must not match ${target}`);
+    }
+  });
+
+  test("a two-branch group works mid-segment as well as as a whole one", () => {
+    const re = globToRegex("src/{a,b}Panel/**");
+    eq(re.test("src/aPanel/x.ts"), true);
+    eq(re.test("src/bPanel/x.ts"), true);
+    eq(re.test("src/cPanel/x.ts"), false);
+  });
+
+  // Everything below keeps the literal, escaped meaning braces have always
+  // had, so a real path containing one is unaffected by the addition above.
+  test("a brace group with no comma stays a literal brace", () => {
+    const re = globToRegex("a/{b}/c");
+    eq(re.test("a/{b}/c"), true);
+    eq(re.test("a/b/c"), false);
+  });
+
+  test("a brace group with an empty branch stays literal", () => {
+    const re = globToRegex("a/{,b}/c");
+    eq(re.test("a/{,b}/c"), true);
+    eq(re.test("a/b/c"), false);
+  });
+
+  test("a brace group spanning a separator stays literal", () => {
+    const re = globToRegex("a/{b/c,d}/e");
+    eq(re.test("a/{b/c,d}/e"), true);
+    eq(re.test("a/b/c/e"), false);
+    eq(re.test("a/d/e"), false);
+  });
+
+  test("an unclosed brace never swallows the rest of the pattern", () => {
+    const re = globToRegex("a/{b");
+    eq(re.test("a/{b"), true);
+    eq(re.test("a/b"), false);
+  });
+
   test("an unparseable glob compiles to nothing rather than throwing", () => {
     eq(globToRegex(null), null);
     eq(globToRegex(42), null);

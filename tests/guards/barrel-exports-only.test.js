@@ -308,4 +308,83 @@ suite("guards/barrel-exports-only", ({ test, eq }) => {
       "ask",
     );
   });
+
+  // --- a JavaScript project's barrels are barrels too -------------------------
+
+  test("an index.js barrel holding an executable statement denies", () => {
+    eq(
+      decide(rule, {
+        toolName: "Write",
+        filePath: "src/components/Button/index.js",
+        content: 'const label = "Save";\nexport { Button } from "./Button";',
+      }),
+      "deny",
+    );
+  });
+
+  test("an index.jsx barrel declaring a component denies", () => {
+    eq(
+      decide(rule, {
+        toolName: "Write",
+        filePath: "src/components/Button/index.jsx",
+        content: "export const Fallback = () => null;",
+      }),
+      "deny",
+    );
+  });
+
+  test("a clean index.js barrel passes", () => {
+    eq(
+      decide(rule, {
+        toolName: "Write",
+        filePath: "src/components/Button/index.js",
+        content: 'export { Button, Button as default } from "./Button";\nexport * from "./constants";\n',
+      }),
+      "pass",
+    );
+  });
+
+  test("a clean index.jsx barrel passes", () => {
+    eq(
+      decide(rule, {
+        toolName: "Write",
+        filePath: "src/components/Button/index.jsx",
+        content: 'export { Button } from "./Button";\n',
+      }),
+      "pass",
+    );
+  });
+
+  test("a component-folder .js file that is not a barrel is not judged as one", () => {
+    eq(
+      decide(rule, {
+        toolName: "Write",
+        filePath: "src/components/Button/useButton.js",
+        content: "export const useButton = () => { const x = 1; return x; };",
+      }),
+      "pass",
+    );
+  });
+
+  test("an index.js outside the component folders is none of this rule's business", () => {
+    eq(
+      decide(rule, {
+        toolName: "Write",
+        filePath: "scripts/index.js",
+        content: "const x = 1;",
+      }),
+      "pass",
+    );
+  });
+
+  test("an index.mjs barrel outside the component folders still passes", () => {
+    eq(
+      decide(rule, {
+        toolName: "Write",
+        filePath: "tools/index.mjs",
+        content: "const x = 1;",
+      }),
+      "pass",
+    );
+  });
 });

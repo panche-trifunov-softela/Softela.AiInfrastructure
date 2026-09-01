@@ -76,6 +76,39 @@ split was adopted to prevent, unaddressed on the backend.
 - No rule enforces anything here today; this is only a question, not a gap
   with a plan.
 
+## A path alias for `Softela.Bugworx`
+
+`react-app/vite.config.js` declares no `resolve.alias`, so every cross-folder
+import is relative and 428 of them climb four or more levels. Adding a single
+`@` → `react-app/src` alias would make those readable and would let a
+component folder move without rewriting its imports.
+
+- The change itself is mechanical and behaviour-preserving: a `resolve.alias`
+  entry, a matching `jsconfig.json` for the editor, then
+  `conventions.pathAliases` in `projects/Softela.Bugworx.json`.
+- What is not decided is whether existing imports are rewritten at all, or
+  only new ones — a sweep across 428 call sites is a large, conflict-prone
+  diff for a cosmetic gain, and the same argument the naming standard makes
+  against rename sweeps applies.
+- **The `import-depth` rule stays inert until the alias exists**, deliberately:
+  a fix naming an alias the bundler cannot resolve would be worse than no
+  rule. Declaring the alias in the project config is what switches it on, so
+  this decision and the rule's activation are the same act.
+
+## Test infrastructure for `Softela.Bugworx`
+
+There are zero spec files, no test script, and no test runner — while the CI
+workflow runs `npm run test --if-present` and passes.
+
+- Nothing here is a gap with an agreed plan; it is a question of whether the
+  project takes on a runner (Vitest is the obvious fit alongside Vite) and
+  when.
+- Until it does, `colocated-tests` has nothing to check and no coverage
+  expectation applies. The verification story is `npm run build` and
+  `npm run lint` — see `docs/projects/Softela.Bugworx/README.md`.
+- The same is true of `Softela.PestManagement`, which also has no test
+  project. Whether the two are decided together is itself open.
+
 ## Adopting the frontend rulebook beyond the team that wrote it
 
 A standard only part of a team follows is not a standard in practice — a

@@ -24,6 +24,6 @@ module.exports = {
     },
   },
   // See `cross-repo-delegation.js`'s own comment on this field.
-  modules: ["agent-orchestration", "analyze-first", "memory-as-context"],
+  modules: ["agent-orchestration", "analyze-first", "frontend-workflows", "memory-as-context"],
   assertions: ["read-before-write", "denial-respected", "reuse-searched", "tier-named", "standards-obeyed"],
 };

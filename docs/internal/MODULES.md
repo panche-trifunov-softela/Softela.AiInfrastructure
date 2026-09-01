@@ -94,9 +94,9 @@ nobody can reason about.
 
 ---
 
-## The five modules
+## The six modules
 
-Two of the five — `analyze-first` and `agent-orchestration` — ship no
+Two of the six — `analyze-first` and `agent-orchestration` — ship no
 `prompt.md` of their own. `core/installer/rulebook.js` generates a base
 rulebook every install always carries, live at plan time
 (`core/installer/detect.js#gather` calls it, `plan.js#planGlobalInstructions`
@@ -282,6 +282,31 @@ Three things to get right in the implementation:
 - Per-spawn model and effort overrides on Codex sit behind a feature flag that
   is off by default. The installer enables it as a `seed` setting, and `doctor`
   reports when it has been turned back off, because the tier rule depends on it.
+
+### `frontend-workflows` — default **on**
+
+Three procedures for the frontend jobs an agent gets wrong the same way every
+time: `/new-component`, `/split-component`, `/new-endpoint` on Claude Code;
+`$new-component`, `$split-component`, `$new-endpoint` on Codex.
+
+- **Ships nothing executable and activates no guard.** It is six documents:
+  one Claude command and one Codex skill per workflow, reached through this
+  module’s `commands` block like `session-cleanup`’s.
+- **It covers what a guard cannot.** The guards already check the mechanical
+  half — where a file sits, whether a barrel implements, whether a view holds
+  state. What they cannot check is whether the component should exist at all,
+  whether a split follows the real seams, or whether an endpoint is real.
+  Each document front-loads exactly that step and requires it to be reported,
+  including what could **not** be found and was therefore not written.
+- **Not prompt text.** The base rulebook is loaded into every session and is
+  already near its own line ceiling; a procedure that matters three times a
+  week at the start of one specific task earns being reachable by name, not
+  permanent context.
+- Both hosts get the same procedure, and
+  `tests/modules/frontend-workflows.test.js` asserts heading-for-heading that
+  they have not drifted — a workflow that differs by host is a workflow
+  nobody can rely on. Only the front matter differs, because the two hosts
+  read different front matter.
 
 ### `session-cleanup` — default **off**
 

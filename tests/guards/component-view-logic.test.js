@@ -174,4 +174,42 @@ suite("guards/component-view-logic", ({ test, eq, ok }) => {
     const content = 'import {useState} from "react";\nexport const helper=()=>useState(0);';
     eq(decide(rule, write("src/components/x/Card/helpers.ts", content)), "pass");
   });
+
+  /* --------------------------------------------- a JavaScript project's views */
+
+  test("a new .jsx view carrying state and an effect denies, same as a .tsx one", () => {
+    eq(decide(rule, write("src/components/x/Card/Card.jsx", VIEW_WITH_LOGIC)), "deny");
+  });
+
+  test("a use*.jsx file is the component's hook, not its view — state belongs in it", () => {
+    eq(decide(rule, write("src/components/x/Card/useCard.jsx", VIEW_WITH_LOGIC)), "pass");
+  });
+
+  test("an index.jsx barrel is never judged as a view", () => {
+    eq(decide(rule, write("src/components/x/Card/index.jsx", VIEW_WITH_LOGIC)), "pass");
+  });
+
+  test("an index.js barrel is never judged as a view", () => {
+    eq(decide(rule, write("src/components/x/Card/index.js", VIEW_WITH_LOGIC)), "pass");
+  });
+
+  test("a purely presentational .jsx view passes", () => {
+    const content = "const Row = ({ item }) => <td>{item.name}</td>;\nexport default Row;";
+    eq(decide(rule, write("src/components/x/Row/Row.jsx", content)), "pass");
+  });
+
+  test("a .jsx view that only calls its own hook passes", () => {
+    const content = [
+      'import useCard from "./useCard";',
+      "const Card = () => { const { title, onSave } = useCard(); return <button onClick={onSave}>{title}</button>; };",
+    ].join("\n");
+    eq(decide(rule, write("src/components/x/Card/Card.jsx", content)), "pass");
+  });
+
+  test("an existing .jsx view is not relitigated either", () => {
+    eq(
+      decide(rule, write("src/components/x/Card/Card.jsx", VIEW_WITH_LOGIC, { existing: "old content" })),
+      "pass",
+    );
+  });
 });

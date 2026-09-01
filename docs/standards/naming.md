@@ -24,6 +24,27 @@ this, actually" detour.
 **Folder name and main file name MUST match**: `OrderPanel/OrderPanel.tsx`,
 never `OrderPanel/View.tsx`.
 
+### Grouping folders
+
+A folder that holds no component of its own and exists only to group others
+— a feature area, a route section — is **`PascalCase` too**, so a path reads
+in one convention from end to end:
+
+```
+GOOD   src/pages/Configuration/ServiceInspection/PestTypes/PestTypes.jsx
+BAD    src/pages/configuration/service-inspection/PestTypes/PestTypes.jsx
+```
+
+One convention per tree matters more than which one: the cost being avoided
+is a project where the same concept is spelled `ServiceInspection` in one
+tree and `service-inspection` in another, and nobody can type a path without
+first checking which half they are in.
+
+**A URL is not a folder name.** Route paths are kebab-case because that is
+the convention for URLs; that says nothing about the folder the component
+lives in, and matching one to the other is not a reason to break the
+convention above.
+
 ## Identifier naming
 
 These are the conventions this rulebook binds. They are stated here on

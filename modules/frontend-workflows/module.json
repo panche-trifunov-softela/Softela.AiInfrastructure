@@ -1,0 +1,22 @@
+{
+  "id": "frontend-workflows",
+  "title": "Frontend workflows",
+  "summary": "Repeatable procedures for the three frontend jobs an agent gets wrong the same way every time: scaffolding a component, splitting an oversized one, and adding a backend call.",
+  "defaultEnabled": true,
+  "requires": [],
+  "guards": [],
+  "files": [],
+  "commands": [
+    { "agent": "claude", "from": "assets/new-component.command.md", "to": "commands/new-component.md" },
+    { "agent": "codex", "from": "assets/new-component.skill.md", "to": "skills/new-component/SKILL.md" },
+
+    { "agent": "claude", "from": "assets/split-component.command.md", "to": "commands/split-component.md" },
+    { "agent": "codex", "from": "assets/split-component.skill.md", "to": "skills/split-component/SKILL.md" },
+
+    { "agent": "claude", "from": "assets/new-endpoint.command.md", "to": "commands/new-endpoint.md" },
+    { "agent": "codex", "from": "assets/new-endpoint.skill.md", "to": "skills/new-endpoint/SKILL.md" }
+  ],
+  "hooks": [],
+  "settings": [],
+  "options": {}
+}

@@ -251,4 +251,61 @@ suite("guards/component-folder-shape", ({ test, eq }) => {
       "ask",
     );
   });
+
+  // --- a colocated hook is not the file the folder is named after -----------
+
+  test("a use*.jsx hook beside its component passes — the folder is named after the component", () => {
+    eq(
+      decide(rule, {
+        toolName: "Write",
+        filePath: "src/components/RouteConfiguration/useRouteConfiguration.jsx",
+        content: "export const useRouteConfiguration = () => () => null;",
+      }),
+      "pass",
+    );
+  });
+
+  test("a use*.tsx hook beside its component passes too", () => {
+    eq(
+      decide(rule, {
+        toolName: "Write",
+        filePath: "src/components/Grid/useColumnRenderer.tsx",
+        content: "export const useColumnRenderer = () => () => null;",
+      }),
+      "pass",
+    );
+  });
+
+  test("a hook in the folder's own hooks/ subfolder passes", () => {
+    eq(
+      decide(rule, {
+        toolName: "Write",
+        filePath: "src/components/Grid/hooks/useGridSelection.jsx",
+        content: "export const useGridSelection = () => () => null;",
+      }),
+      "pass",
+    );
+  });
+
+  test("a component whose name merely starts with the letters 'use' is still a component", () => {
+    eq(
+      decide(rule, {
+        toolName: "Write",
+        filePath: "src/components/Widget/userCard.jsx",
+        content: "export default function userCard() { return null; }",
+      }),
+      "deny",
+    );
+  });
+
+  test("a PascalCase component starting with 'Use' is still judged on its folder", () => {
+    eq(
+      decide(rule, {
+        toolName: "Write",
+        filePath: "src/components/Widget/UserCard.jsx",
+        content: "export default function UserCard() { return null; }",
+      }),
+      "deny",
+    );
+  });
 });

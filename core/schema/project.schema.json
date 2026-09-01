@@ -147,7 +147,8 @@
             "warn": { "type": "integer", "minimum": 0 },
             "ask": { "type": "integer", "minimum": 0 }
           }
-        }
+        },
+        "relativeImportDepth": { "type": "integer", "minimum": 1 }
       }
     },
     "docCommentStyle": {
@@ -247,6 +248,7 @@
         "forbidden-commands",
         "hook-locality",
         "immutable-migrations",
+        "import-depth",
         "infra-self-protection",
         "layer-dependencies",
         "local-config-isolation",

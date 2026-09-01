@@ -28,6 +28,12 @@ const CAMEL_SEGMENT = /^[a-z0-9]+[A-Z][A-Za-z0-9]*$/;
 /** A path segment that marks hook modules, independent of any project config. */
 const HOOKS_PATH_SEGMENT = /(^|\/)hooks(\/|$)/i;
 
+/**
+ * Extensions a hook module can carry. A JavaScript project writes
+ * `useOrderPanel.js`; the convention it is judged against is the same one.
+ */
+const HOOK_FILE_EXTENSIONS = new Set([".ts", ".tsx", ".js", ".jsx"]);
+
 /** A secondary suffix sitting between a colocated file's real name and its extension. */
 const SECONDARY_SUFFIX = /\.(test|spec|stories|d)$/i;
 
@@ -80,6 +86,13 @@ function splitSecondarySuffix(stem) {
  * Checks a React component file's base name against PascalCase, scoped to
  * the project's declared component folders.
  *
+ * A `use`-prefixed name is a hook by convention, whatever extension it
+ * carries: a hook legitimately takes `.tsx`/`.jsx` when it genuinely returns
+ * JSX (a render prop, a column renderer), and PascalCase is not its
+ * convention. Judging one here denied it with a fix — "rename
+ * `useColumnRenderer` to `UseColumnRenderer`" — that is wrong in both
+ * directions, so hooks are left to {@link checkHookName}.
+ *
  * @param {object} ctx The evaluation context.
  * @param {{rel: string, stem: string, ext: string}} file The decomposed
  * path.
@@ -96,6 +109,7 @@ function checkComponentName(ctx, file) {
   if (!re || !re.test(file.rel)) return null;
 
   const { name, suffix } = splitSecondarySuffix(file.stem);
+  if (HOOK_NAME.test(name)) return null;
   if (PASCAL_CASE.test(name)) return null;
 
   return deny(
@@ -115,7 +129,7 @@ function checkComponentName(ctx, file) {
  * decision, or `null` when the check does not apply or the name is fine.
  */
 function checkHookName(file) {
-  if (file.ext !== ".ts" && file.ext !== ".tsx") return null;
+  if (!HOOK_FILE_EXTENSIONS.has(file.ext)) return null;
   if (!HOOKS_PATH_SEGMENT.test(file.rel)) return null;
 
   const { name } = splitSecondarySuffix(file.stem);

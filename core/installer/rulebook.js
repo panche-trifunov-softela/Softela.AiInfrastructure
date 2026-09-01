@@ -64,8 +64,13 @@ const AGENTS = ["claude", "codex"];
  * session-level instruction can talk an agent out of. That was the point of
  * the section, so the ceiling moved rather than the wording; the headroom
  * left over is small on purpose.
+ *
+ * Raised from 440 when `import-depth` was added. Every registered rule is
+ * listed here by construction, so the catalogue grows by roughly nine lines
+ * per rule — the cost of a new rule is partly paid out of this budget, which
+ * is exactly the trade this ceiling exists to make visible.
  */
-const MAX_BODY_LINES = 440;
+const MAX_BODY_LINES = 460;
 
 /**
  * The column this module wraps generated prose to — matching the width

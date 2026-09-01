@@ -104,7 +104,8 @@ Each document opens with one of these:
 | [`shared-code-boundaries.md`](./shared-code-boundaries.md) | Active | What belongs at a project's shared root versus inside one consumer's own folder, and how the same folder split applies to a store, a context or a root-level hook once it outgrows one file. |
 | [`component-structure.md`](./component-structure.md) | Active | One component, one folder; required and optional contents; how a folder grows and how code is promoted out of it. |
 | [`layer-boundaries.md`](./layer-boundaries.md) | Active | What the view, the hook, context and utilities are each allowed to do, and which layer may import which. |
-| [`naming.md`](./naming.md) | Active | File, folder, hook, constant and spec naming conventions. |
+| [`naming.md`](./naming.md) | Active | File, folder, hook, constant and spec naming conventions, grouping folders included. |
+| [`module-imports.md`](./module-imports.md) | Active | The import statement: through a folder’s barrel rather than around it, the project path alias instead of a climbing relative specifier, and keeping the import list honest. |
 | [`file-size.md`](./file-size.md) | Active | The line-count thresholds, the exception mechanism, and how to split a file that has grown too large. |
 | [`state-management.md`](./state-management.md) | Active | Where a given piece of state belongs, server data versus reference data, prop drilling, cross-component signalling. |
 | [`types.md`](./types.md) | Active | Frontend-only type design **and** backend-contract typing and filing — matching the backend exactly, one DTO per file, the nullability generics. Contract typing is binding now; only the API layer's own file organisation is deferred, see `api-layer.md`. |
@@ -114,6 +115,7 @@ Each document opens with one of these:
 | [`testing.md`](./testing.md) | Active | Co-located tests, what to test at each layer, one test per behaviour, test naming, coverage expectations. |
 | [`agent-rules.md`](./agent-rules.md) | Active | Rules for an AI agent working in the repository, as distinct from rules about the code it writes. |
 | [`migration-approach.md`](./migration-approach.md) | Active | The general shape of a no-big-bang rollout: phases, the Boy Scout rule, gating new work — without any one project's own backlog. |
+| [`javascript-projects.md`](./javascript-projects.md) | Active | What this rulebook means for a project whose source is JavaScript: what is unchanged (almost all of it), and how a shape is written down without a compiler behind it. |
 
 ## The backend documents
 

@@ -65,8 +65,12 @@ const { readStdin } = require("./stdin");
  * records exactly this number; a matching marker short-circuits every run
  * after the first to a single file read, which is what keeps this hook cheap
  * enough to run on every session start (see `MARKER_FILE`).
+ *
+ * Bumped to 2 when the `Softela.Bugworx` seed files were added, so a machine
+ * that already seeded at version 1 picks them up on its next session start
+ * instead of short-circuiting on a stale marker.
  */
-const SEED_VERSION = 1;
+const SEED_VERSION = 2;
 
 /** The memory-directory subdirectory this tool owns outright and may freely rewrite. */
 const SEED_SUBDIR = "softela";

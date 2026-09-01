@@ -27,6 +27,20 @@ const WRITE_TOOLS = /^(Write|Edit|MultiEdit|NotebookEdit|apply_patch|write_file)
 const COMPONENT_EXTENSION = /\.(tsx|jsx)$/i;
 
 /**
+ * A colocated hook, which is out of scope for the same reason a `.ts`/`.js`
+ * sibling is — the folder is named after the component, not after the hook
+ * beside it.
+ *
+ * It needs its own pattern because a hook legitimately takes `.tsx`/`.jsx`
+ * when it genuinely returns JSX (a render prop, a column renderer), and the
+ * extension alone therefore cannot tell the two apart. Without this,
+ * `RouteConfiguration/useAddEditRouteConfiguration.jsx` was denied for not
+ * sitting in a `useAddEditRouteConfiguration` folder of its own — which is
+ * the opposite of the layout this rule exists to enforce.
+ */
+const HOOK_FILE = /^use[A-Z0-9][A-Za-z0-9_]*\.[jt]sx$/;
+
+/**
  * Resolves a context's file path to a forward-slash path relative to the
  * repository root, falling back to the working directory when the root is
  * unknown.
@@ -96,6 +110,7 @@ module.exports = {
     if (testFolder && segments.includes(testFolder)) return pass();
 
     const fileName = segments[segments.length - 1];
+    if (HOOK_FILE.test(fileName)) return pass();
     const baseName = fileName.split(".")[0];
     if (!baseName || baseName.toLowerCase() === "index") return pass();
 

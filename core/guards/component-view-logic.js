@@ -57,11 +57,18 @@ const WRITE_TOOLS = /^(Write|Edit|MultiEdit|NotebookEdit|apply_patch|write_file)
 /** A test file by its own naming convention, independent of any config. */
 const TEST_FILE_SUFFIX = /\.(test|spec)\.[a-z0-9]+$/i;
 
-/** The barrel file a component folder publishes. */
-const INDEX_FILE = /^index\.(ts|tsx)$/i;
+/** The barrel file a component folder publishes, in any project extension. */
+const INDEX_FILE = /^index\.(tsx?|jsx?|mts|cts|mjs|cjs)$/i;
 
-/** A component-folder hook — where every marker below legitimately belongs. */
-const HOOK_FILE = /^use[A-Za-z0-9_].*\.tsx?$/;
+/**
+ * A component-folder hook — where every marker below legitimately belongs.
+ *
+ * Matches `.jsx` as well as `.tsx`, which is not symmetry for its own sake:
+ * this rule only ever reaches a file carrying {@link VIEW_EXTENSION}, so a
+ * `use*.js` hook was never in scope, but a `use*.jsx` one is — and denying a
+ * hook for holding state is exactly backwards.
+ */
+const HOOK_FILE = /^use[A-Za-z0-9_].*\.[jt]sx?$/;
 
 /** A component's own view file. */
 const VIEW_EXTENSION = /\.(tsx|jsx)$/i;

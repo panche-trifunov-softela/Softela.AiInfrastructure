@@ -247,6 +247,110 @@ const CASES = [
     ctx: { toolName: "Write", filePath: "/repo/src/components/widget.tsx", content: "export default function widget() { return null; }\n", project: PROJECT_MINIMAL },
     want: "pass",
   },
+
+  // a JavaScript project is judged against exactly the same conventions
+  {
+    label: "a .js hook file without the camelCase `use` shape denies on a JavaScript project",
+    ctx: {
+      toolName: "Write",
+      filePath: "/repo/src/hooks/UseFetch.js",
+      content: "export function UseFetch() {}\n",
+      project: { conventions: { language: "javascript", componentFolders: "src/components/**" } },
+    },
+    want: "deny",
+  },
+  {
+    label: "a .jsx component file not in PascalCase denies on a JavaScript project",
+    ctx: {
+      toolName: "Write",
+      filePath: "/repo/src/components/widget.jsx",
+      content: "export default function widget() { return null; }\n",
+      project: { conventions: { language: "javascript", componentFolders: "src/components/**" } },
+    },
+    want: "deny",
+  },
+  {
+    label: "a well-named .js hook file passes",
+    ctx: {
+      toolName: "Write",
+      filePath: "/repo/src/hooks/useFetch.js",
+      content: "export function useFetch() {}\n",
+      project: { conventions: { language: "javascript", componentFolders: "src/components/**" } },
+    },
+    want: "pass",
+  },
+  {
+    label: "a well-named .jsx hook that genuinely returns JSX passes",
+    ctx: {
+      toolName: "Write",
+      filePath: "/repo/src/hooks/useColumnRenderer.jsx",
+      content: "export function useColumnRenderer() { return () => null; }\n",
+      project: { conventions: { language: "javascript", componentFolders: "src/components/**" } },
+    },
+    want: "pass",
+  },
+  {
+    label: "a use-prefixed .js module outside any hooks folder is not judged as a hook",
+    ctx: {
+      toolName: "Write",
+      filePath: "/repo/src/utils/userDefaults.js",
+      content: "export const userDefaults = {};\n",
+      project: { conventions: { language: "javascript", componentFolders: "src/components/**" } },
+    },
+    want: "pass",
+  },
+  {
+    label: "a well-named .jsx component file passes",
+    ctx: {
+      toolName: "Write",
+      filePath: "/repo/src/components/Widget/Widget.jsx",
+      content: "export default function Widget() { return null; }\n",
+      project: { conventions: { language: "javascript", componentFolders: "src/components/**" } },
+    },
+    want: "pass",
+  },
+
+  // a use-prefixed file is a hook, whatever extension it carries
+  {
+    label: "a well-named hook taking .jsx because it returns JSX is not judged as a component",
+    ctx: {
+      toolName: "Write",
+      filePath: "/repo/src/components/Grid/useColumnRenderer.jsx",
+      content: "export const useColumnRenderer = () => () => null;\n",
+      project: { conventions: { language: "javascript", componentFolders: "src/components/**" } },
+    },
+    want: "pass",
+  },
+  {
+    label: "the same file in TypeScript is not judged as a component either",
+    ctx: {
+      toolName: "Write",
+      filePath: "/repo/src/components/Grid/useColumnRenderer.tsx",
+      content: "export const useColumnRenderer = () => () => null;\n",
+      project: { conventions: { language: "typescript", componentFolders: "src/components/**" } },
+    },
+    want: "pass",
+  },
+  {
+    label: "a badly-cased component whose name merely starts with the letters 'use' still denies",
+    ctx: {
+      toolName: "Write",
+      filePath: "/repo/src/components/userCard.tsx",
+      content: "export default function userCard() { return null; }\n",
+      project: { conventions: { language: "typescript", componentFolders: "src/components/**" } },
+    },
+    want: "deny",
+  },
+  {
+    label: "a PascalCase component starting with 'Use' is still a component and still passes",
+    ctx: {
+      toolName: "Write",
+      filePath: "/repo/src/components/UserCard.tsx",
+      content: "export default function UserCard() { return null; }\n",
+      project: { conventions: { language: "typescript", componentFolders: "src/components/**" } },
+    },
+    want: "pass",
+  },
 ];
 
 suite("guards/naming-standards", ({ test, eq }) => {

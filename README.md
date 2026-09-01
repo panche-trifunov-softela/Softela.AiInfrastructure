@@ -69,24 +69,27 @@ never touches a directory named `memory`.
 
 ## What you get
 
-**35 rules**, in three groups. Each returns one of three outcomes: **pass**
+**36 rules**, in three groups. Each returns one of three outcomes: **pass**
 (silent), **ask** (you decide), or **deny** (blocked, always with a suggested
 fix).
 
 | Group | Covers |
 | --- | --- |
 | `git` | Branch protection, commit hygiene, rebase safety, protected paths, per-repository forbidden commands |
-| `code` | File size, folder shape, layer boundaries on both stacks, naming, documentation style, reuse before writing something new, the transactional outbox, migrations that have already been applied |
+| `code` | File size, folder shape, layer boundaries on both stacks, module imports, naming, documentation style, reuse before writing something new, the transactional outbox, migrations that have already been applied |
 | `agent` | Which model tier a subagent may use, a floor on reasoning effort, when to delegate a survey, keeping delegation one level deep, and protecting this infrastructure's own files |
 
-**29 of the 35 run in a repository that has no project config at all** —
+**29 of the 36 run in a repository that has no project config at all** —
 `projects/_default.json` supplies sensible stack detection, limits and
 protected paths, so a rule is never silently inert just because nobody wrote a
-config yet. The six that stay quiet need a repository-specific fact that
+config yet. The seven that stay quiet need a repository-specific fact that
 cannot be guessed: a typecheck invocation, an install flag, a patch-manifest
-shape, a migration-script layout, a layer ordering, an outbox spelling. The
-last two arrive for any repository that declares `"stack": "backend"`, from
-`projects/_presets/backend.json`.
+shape, a migration-script layout, a layer ordering, an outbox spelling, a
+path alias. The layer ordering and the outbox spelling arrive for any
+repository that declares `"stack": "backend"`, from
+`projects/_presets/backend.json`; the path alias is one no preset can supply,
+because a fix naming an alias the bundler cannot resolve is worse than no
+rule at all.
 
 `_default.json` is a **floor, not a fallback**: writing a project file for a
 repository layers that file on top of the defaults, so naming a repository
@@ -94,13 +97,14 @@ adds rules to it and never removes any. Protection lists are unioned and the
 stronger action wins; the one way a project ends up weaker is an explicit
 `off`, written down in the config where a reviewer can see it.
 
-**5 modules**, three enabled by default:
+**6 modules**, four enabled by default:
 
 | Module | Default | What it does |
 | --- | --- | --- |
 | `analyze-first` | on | Read before writing; state assumptions; ask instead of guessing |
 | `memory-as-context` | on | Durable project knowledge on disk, re-injected at session start and after compaction |
 | `agent-orchestration` | on | Strong models decide, cheaper models execute; enforces subagent model tier and effort floor |
+| `frontend-workflows` | on | `/new-component`, `/split-component`, `/new-endpoint` — the three frontend jobs an agent gets wrong the same way every time |
 | `reply-language` | opt-in | Which language the agent replies in — conversation only, never code or docs |
 | `session-cleanup` | opt-in | Prunes saved session transcripts, dry run by default |
 

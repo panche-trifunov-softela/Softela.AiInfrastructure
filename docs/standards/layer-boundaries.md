@@ -139,6 +139,53 @@ passing one prop do not need a context.
   subtree, or that unrelated parts of the app must read, belongs in a
   store — see [`state-management.md`](./state-management.md).
 
+### A provider holds one concern, not a directory of them
+
+The failure mode worth naming, because it arrives gradually and is painful
+to unwind: a single provider near the root that calls every feature's hook
+and hands the results out as one object.
+
+```jsx
+// BAD — one provider, every feature's hook, all mounted at all times.
+export const FormProvider = ({ children }) => {
+  const addEditCustomer = useAddEditCustomer();
+  const addEditInvoice = useAddEditInvoice();
+  const addEditVehicle = useAddEditVehicle();
+  // …twenty more…
+  const value = { addEditCustomer, addEditInvoice, addEditVehicle /* … */ };
+  return <FormContext.Provider value={value}>{children}</FormContext.Provider>;
+};
+```
+
+It starts as a convenience — one import, one hook, everything reachable —
+and it is genuinely easier than threading state for about the first five
+entries. What it costs:
+
+- **Everything is mounted always.** Every feature's state, effects and
+  fetches are live on every screen, including the screens that will never
+  render that feature.
+- **Every consumer re-renders on every unrelated change.** The context value
+  is one object; a keystroke in one feature's form invalidates it for all of
+  them.
+- **The dependency graph inverts.** The provider imports from every feature
+  folder, so nothing is independently movable, testable or deletable — the
+  exact property [`component-structure.md`](./component-structure.md) builds
+  the folder to give it. A cycle is one import away.
+- **It never shrinks.** Adding an entry is one line; removing one means
+  proving nothing reads it, across the whole app.
+
+The fix is not a bigger provider or a memoised value — it is that **each
+feature owns its own state and mounts it where it is used.** The screen that
+renders a form calls that form's own hook. Where a feature genuinely does
+need to be reachable from unrelated parts of the app, that is what a store
+is for, one concern at a time — see
+[`state-management.md`](./state-management.md).
+
+A context that already looks like this is unwound the same way as any other
+oversized module: one concern out at a time, each move behaviour-preserving
+and separately reviewable — see
+[`migration-approach.md`](./migration-approach.md).
+
 ## Constants and utilities
 
 - **Constants.** No magic strings or numbers in a view or a hook. Keys,

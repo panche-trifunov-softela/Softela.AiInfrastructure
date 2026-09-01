@@ -15,16 +15,18 @@
 5. [Component structure](#component-structure)
 6. [Layer boundaries](#layer-boundaries)
 7. [Naming conventions](#naming-conventions)
-8. [File size and decomposition](#file-size-and-decomposition)
-9. [State and communication](#state-and-communication)
-10. [Types](#types)
-11. [The API layer](#the-api-layer)
-12. [Local development configuration](#local-development-configuration)
-13. [Code documentation](#code-documentation)
-14. [Testing](#testing)
-15. [Rules for an AI coding agent](#rules-for-an-ai-coding-agent)
-16. [Git flow](#git-flow)
-17. [Migration approach](#migration-approach)
+8. [Module imports](#module-imports)
+9. [File size and decomposition](#file-size-and-decomposition)
+10. [State and communication](#state-and-communication)
+11. [Types](#types)
+12. [The API layer](#the-api-layer)
+13. [Local development configuration](#local-development-configuration)
+14. [Code documentation](#code-documentation)
+15. [Testing](#testing)
+16. [Rules for an AI coding agent](#rules-for-an-ai-coding-agent)
+17. [Git flow](#git-flow)
+18. [Projects without TypeScript](#projects-without-typescript)
+19. [Migration approach](#migration-approach)
 
 ---
 
@@ -134,7 +136,8 @@ Each document opens with one of these:
 | [`shared-code-boundaries.md`](./shared-code-boundaries.md) | Active | What belongs at a project's shared root versus inside one consumer's own folder, and how the same folder split applies to a store, a context or a root-level hook once it outgrows one file. |
 | [`component-structure.md`](./component-structure.md) | Active | One component, one folder; required and optional contents; how a folder grows and how code is promoted out of it. |
 | [`layer-boundaries.md`](./layer-boundaries.md) | Active | What the view, the hook, context and utilities are each allowed to do, and which layer may import which. |
-| [`naming.md`](./naming.md) | Active | File, folder, hook, constant and spec naming conventions. |
+| [`naming.md`](./naming.md) | Active | File, folder, hook, constant and spec naming conventions, grouping folders included. |
+| [`module-imports.md`](./module-imports.md) | Active | The import statement: through a folder’s barrel rather than around it, the project path alias instead of a climbing relative specifier, and keeping the import list honest. |
 | [`file-size.md`](./file-size.md) | Active | The line-count thresholds, the exception mechanism, and how to split a file that has grown too large. |
 | [`state-management.md`](./state-management.md) | Active | Where a given piece of state belongs, server data versus reference data, prop drilling, cross-component signalling. |
 | [`types.md`](./types.md) | Active | Frontend-only type design **and** backend-contract typing and filing — matching the backend exactly, one DTO per file, the nullability generics. Contract typing is binding now; only the API layer's own file organisation is deferred, see `api-layer.md`. |
@@ -144,6 +147,7 @@ Each document opens with one of these:
 | [`testing.md`](./testing.md) | Active | Co-located tests, what to test at each layer, one test per behaviour, test naming, coverage expectations. |
 | [`agent-rules.md`](./agent-rules.md) | Active | Rules for an AI agent working in the repository, as distinct from rules about the code it writes. |
 | [`migration-approach.md`](./migration-approach.md) | Active | The general shape of a no-big-bang rollout: phases, the Boy Scout rule, gating new work — without any one project's own backlog. |
+| [`javascript-projects.md`](./javascript-projects.md) | Active | What this rulebook means for a project whose source is JavaScript: what is unchanged (almost all of it), and how a shape is written down without a compiler behind it. |
 
 ## The backend documents
 
@@ -481,6 +485,50 @@ For everything else the converse holds: **code with exactly one consumer
 belongs inside that consumer's own folder**, where it can be found, changed
 and deleted along with it. A shared root full of single-use code is the same
 problem as an oversized file, just spread out across more locations.
+
+## A feature's parts live together
+
+A route-level screen and the pieces only that screen renders are one
+feature. Splitting them across two parallel trees — the screen under a
+`pages/` root, its dialogs and panels under a mirrored path in a
+`components/` root — is a common shape and a costly one:
+
+```
+BAD — one feature, two trees, mirrored by hand
+  src/pages/configuration/service-inspection/PestTypes/PestTypes.jsx
+  src/components/Configuration/ServiceInspection/PestTypes/AddEditPestType.jsx
+```
+
+```
+GOOD — one feature, one folder
+  src/pages/PestTypes/
+    PestTypes.jsx
+    usePestTypes.js
+    index.js
+    components/
+      AddEditPestType/
+        AddEditPestType.jsx
+        useAddEditPestType.js
+        index.js
+```
+
+The mirrored form has to be kept in step by hand, in two places, forever. It
+guarantees a long climbing import in one direction (see
+[`module-imports.md`](./module-imports.md)), it lets the two halves drift
+apart in naming — which is how the same concept ends up spelled two ways —
+and it means nothing about the feature can be moved, extracted or deleted as
+a unit, because half of it is somewhere else.
+
+**A component with exactly one consumer belongs inside that consumer's own
+folder**, and a route-level screen is a consumer like any other. This is not
+a new rule; it is "the root is for shared code" applied to a screen rather
+than to a utility. The `components/` root is for what more than one screen
+renders — promoted there on the second consumer, like everything else.
+
+`pages/` (or `routes/`, or whatever a project calls it) stays what it is: the
+route-level entry points, each one a component folder of the ordinary shape.
+Nesting the route hierarchy inside it is fine; duplicating that hierarchy in
+a second tree is what this section is against.
 
 ## A folder that has shrunk to one occupant
 
@@ -900,6 +948,53 @@ passing one prop do not need a context.
   subtree, or that unrelated parts of the app must read, belongs in a
   store — see [`state-management.md`](./state-management.md).
 
+### A provider holds one concern, not a directory of them
+
+The failure mode worth naming, because it arrives gradually and is painful
+to unwind: a single provider near the root that calls every feature's hook
+and hands the results out as one object.
+
+```jsx
+// BAD — one provider, every feature's hook, all mounted at all times.
+export const FormProvider = ({ children }) => {
+  const addEditCustomer = useAddEditCustomer();
+  const addEditInvoice = useAddEditInvoice();
+  const addEditVehicle = useAddEditVehicle();
+  // …twenty more…
+  const value = { addEditCustomer, addEditInvoice, addEditVehicle /* … */ };
+  return <FormContext.Provider value={value}>{children}</FormContext.Provider>;
+};
+```
+
+It starts as a convenience — one import, one hook, everything reachable —
+and it is genuinely easier than threading state for about the first five
+entries. What it costs:
+
+- **Everything is mounted always.** Every feature's state, effects and
+  fetches are live on every screen, including the screens that will never
+  render that feature.
+- **Every consumer re-renders on every unrelated change.** The context value
+  is one object; a keystroke in one feature's form invalidates it for all of
+  them.
+- **The dependency graph inverts.** The provider imports from every feature
+  folder, so nothing is independently movable, testable or deletable — the
+  exact property [`component-structure.md`](./component-structure.md) builds
+  the folder to give it. A cycle is one import away.
+- **It never shrinks.** Adding an entry is one line; removing one means
+  proving nothing reads it, across the whole app.
+
+The fix is not a bigger provider or a memoised value — it is that **each
+feature owns its own state and mounts it where it is used.** The screen that
+renders a form calls that form's own hook. Where a feature genuinely does
+need to be reachable from unrelated parts of the app, that is what a store
+is for, one concern at a time — see
+[`state-management.md`](./state-management.md).
+
+A context that already looks like this is unwound the same way as any other
+oversized module: one concern out at a time, each move behaviour-preserving
+and separately reviewable — see
+[`migration-approach.md`](./migration-approach.md).
+
 ## Constants and utilities
 
 - **Constants.** No magic strings or numbers in a view or a hook. Keys,
@@ -972,6 +1067,27 @@ this, actually" detour.
 **Folder name and main file name MUST match**: `OrderPanel/OrderPanel.tsx`,
 never `OrderPanel/View.tsx`.
 
+### Grouping folders
+
+A folder that holds no component of its own and exists only to group others
+— a feature area, a route section — is **`PascalCase` too**, so a path reads
+in one convention from end to end:
+
+```
+GOOD   src/pages/Configuration/ServiceInspection/PestTypes/PestTypes.jsx
+BAD    src/pages/configuration/service-inspection/PestTypes/PestTypes.jsx
+```
+
+One convention per tree matters more than which one: the cost being avoided
+is a project where the same concept is spelled `ServiceInspection` in one
+tree and `service-inspection` in another, and nobody can type a path without
+first checking which half they are in.
+
+**A URL is not a folder name.** Route paths are kebab-case because that is
+the convention for URLs; that says nothing about the folder the component
+lives in, and matching one to the other is not a reason to break the
+convention above.
+
 ## Identifier naming
 
 These are the conventions this rulebook binds. They are stated here on
@@ -1011,6 +1127,125 @@ emerge only once it is used enough to deserve one.
 
 - `naming-standards` checks file and folder naming against the table
   above for new files.
+
+---
+
+# Module imports
+
+Status: Active — binding for new code.
+
+[`component-structure.md`](./component-structure.md) says what a folder
+contains and [`layer-boundaries.md`](./layer-boundaries.md) says which layer
+may depend on which. This document covers the line that actually expresses
+both of those in the source: the import statement.
+
+It is the most-written line in a frontend codebase and the least thought
+about, and it decides two things the rest of the rulebook depends on —
+whether a folder can be moved, and whether a reader can tell what a file
+depends on without opening it.
+
+## Import a folder through its barrel, not through its files
+
+A component folder's `index` file is its public surface. Everything else in
+it is private, and the import statement is where that is either honoured or
+quietly ignored:
+
+```ts
+// GOOD — the folder's own barrel; the folder stays free to rearrange inside.
+import { OrderRow } from "@/components/OrderPanel";
+
+// BAD — reaching past the barrel into the folder's internals.
+import { OrderRow } from "@/components/OrderPanel/components/OrderRow/OrderRow";
+```
+
+The second form makes every internal file a de facto public API. The folder
+can no longer rename a child, move it a level down, or fold two of them
+together without breaking a caller that was never supposed to know either
+file existed.
+
+The corollary is that a folder publishing nothing through its barrel is not
+importable at all, which is the point: **add the export deliberately when
+something is genuinely part of the surface**, rather than reaching around a
+missing one.
+
+## Do not climb out of the folder — use the project's path alias
+
+```ts
+// BAD — this specifier names nothing a reader can place.
+import { getPestTypes } from "../../../../utils/storage";
+
+// GOOD
+import { getPestTypes } from "@/utils/storage";
+```
+
+Three separate costs, and the third is the one that matters most here:
+
+- **It cannot be read.** Counting `../` against a mental model of the tree is
+  work, and the answer changes with the importing file's own depth. The same
+  module is `../../utils/storage` from one file and `../../../../` from
+  another.
+- **It silently retargets.** Move either file one level and the specifier
+  still resolves — to something else, or to a build error at a distance from
+  the change that caused it.
+- **It welds the folder in place.** A component folder is supposed to be
+  movable, extractable and deletable as a unit — that is what
+  [`component-structure.md`](./component-structure.md) builds it for. A
+  folder whose files climb four levels out cannot be moved without rewriting
+  every one of them, so in practice it never is.
+
+**One or two levels is ordinary composition** — a child component reaching
+its parent's `utils/`, a view reaching the folder above it. Three is where
+the specifier has left the feature it was written in, and from there the
+count only ever grows.
+
+### The alias has to exist first
+
+An alias is a project-level decision, not a per-file one: it needs a
+`resolve.alias` entry (or the bundler's equivalent), a matching
+`paths` entry in `tsconfig.json` / `jsconfig.json` so the editor resolves it,
+and then it needs to be declared to this rulebook as
+`conventions.pathAliases`.
+
+**A project that has not set one up is not asked to write aliased imports** —
+there would be nothing for them to resolve to. The rule below stays silent
+until the project declares the alias, and declaring it is the change that
+switches the rule on. Setting up a single `@` → source-root alias is a small,
+mechanical, behaviour-preserving change, and it is worth doing before a tree
+gets deep rather than after.
+
+Where more than one alias is declared, use the most specific one that
+covers the target — `@components/Common/Table` says more than
+`@/components/Common/Table` does.
+
+## Keep the import list itself honest
+
+- **No unused imports.** They are dead weight that survives because nothing
+  fails, and they make the dependency list a worse answer to "what does this
+  file actually need" every time one accumulates.
+- **A type-only import says so** where the language has the form
+  (`import type { … }`), so it is erased at build time and cannot be mistaken
+  for a runtime dependency.
+- **Do not import a module purely for its side effects** from a component or
+  a hook. A module that has to run has an entry point that runs it; an import
+  whose only purpose is to be evaluated makes load order load-bearing and
+  invisible.
+
+## What is enforced
+
+- `import-depth` denies a new file's specifier that climbs at least
+  `limits.relativeImportDepth` folders (default 3) and resolves under a
+  declared `conventions.pathAliases` root, naming the aliased form as the
+  fix. Silent for a project that declares no alias, and silent when the
+  target sits under no declared root — a fix it cannot state exactly is a fix
+  it does not offer.
+- `api-import-boundary` denies a component importing the API layer directly
+  (see [`layer-boundaries.md`](./layer-boundaries.md)), resolving aliased
+  specifiers through the same `conventions.pathAliases`.
+- `barrel-exports-only` keeps the barrel a barrel, in every module extension
+  a project writes one in.
+- Nothing enforces "import through the barrel, not around it", or the
+  import-hygiene points above; those are review-enforced, guided by this
+  document, and a linter is the natural home for the unused-import half.
 
 ---
 
@@ -2331,6 +2566,151 @@ correction, not as a second, competing source of truth. This is not a
 criticism of whoever wrote it — conventions drift, and the page has simply
 not been updated to match. Until it is, an agent following this
 infrastructure should follow this document, not the wiki.
+
+---
+
+# Projects without TypeScript
+
+Status: Active — binding for new code in a project whose source is
+JavaScript.
+
+The rest of this rulebook is written in TypeScript, because most of the
+projects it was written against are. That is a choice of example, not a
+precondition: **every structural rule here applies unchanged to a JavaScript
+project**, and this document says what changes for the handful that lean on
+the type system, so nobody has to decide it per file.
+
+Read it alongside [`types.md`](./types.md), which stays the reference for
+what a contract is and why it has to be accurate. Nothing below relaxes
+that; it only says how it is expressed when the compiler is not there to
+check it.
+
+## What is unchanged
+
+Almost all of it, and this is the important half:
+
+- The component folder — its own directory, the view, its `use<Component>`
+  hook, its barrel — see
+  [`component-structure.md`](./component-structure.md).
+- The view/hook/utility split and every layer boundary — see
+  [`layer-boundaries.md`](./layer-boundaries.md).
+- Naming, file size, promotion on the second consumer, colocated tests,
+  where state belongs, how a backend call is made, the import rules in
+  [`module-imports.md`](./module-imports.md).
+
+The guards enforce these on `.js` and `.jsx` exactly as they do on `.ts` and
+`.tsx`. A `use*.jsx` file is a hook; an `index.js` is a barrel; a `.jsx`
+component file is judged against PascalCase. There is no second, laxer
+standard for a JavaScript project, and a project should not read one into
+the absence of a compiler.
+
+## What changes: `types.ts` becomes documentation, not enforcement
+
+TypeScript's `types.ts` does two jobs at once — it tells a reader the shape
+and it stops the compiler accepting a wrong one. Without the compiler only
+the first job is available, and it is still worth doing.
+
+**A JavaScript project writes the shape down in a JSDoc `@typedef`**, in the
+same file the rulebook would have put `types.ts` in, colocated with what it
+describes and promoted on the second consumer like anything else:
+
+```js
+// OrderPanel/types.js
+
+/**
+ * Props accepted by the order panel.
+ *
+ * @typedef {object} OrderPanelProps
+ * @property {string} orderId Identifier of the order to display.
+ * @property {(order: Order) => void} [onSaved] Called after a successful save.
+ */
+
+/**
+ * State and handlers the order panel view renders from.
+ *
+ * @typedef {object} UseOrderPanelResult
+ * @property {Order | null} order Loaded order, or `null` until the request resolves.
+ * @property {boolean} isLoading Whether the order request is in flight.
+ * @property {boolean} canEdit Whether the current user may edit this order.
+ * @property {(values: OrderFormValues) => Promise<void>} save Persists the edited values.
+ */
+
+export {};
+```
+
+This is not ceremony for its own sake. An editor reads `@typedef` and gives
+real completion and real go-to-definition from it, `// @ts-check` turns it
+into an actual check without adopting TypeScript, and — the part that
+matters most in practice — it is the only place a reader can find out what a
+hook returns without reading the hook.
+
+Two things follow:
+
+- **The contract rules in [`types.md`](./types.md) still bind.** A backend
+  shape is still mirrored exactly, still filed centrally by service, still
+  one DTO per file, still never carries a UI-only field. What it loses is
+  the compiler telling you when it drifts — which makes the discipline more
+  important, not less.
+- **`no-explicit-any` has nothing to check** and stays silent. A project
+  with no contract-type files declares no `conventions.contractTypes`, and
+  the rule is inert by design rather than by accident. This is the one place
+  the absence of TypeScript genuinely removes a guarantee, and it is worth
+  being honest that nothing replaces it.
+
+## What changes: props have no compiler behind them
+
+An inline destructured signature — `({ orderId, onSaved }) => …` — is
+readable but says nothing about what those are or whether either is
+required. Since nothing checks it:
+
+- **Document the props type as a `@typedef` and reference it** with
+  `@param {OrderPanelProps} props` on the component, so the shape has one
+  named home a test or a wrapper can point at. This is the JavaScript form
+  of the rule in [`types.md`](./types.md) that props are a named, exported
+  type rather than an inline literal.
+- **Validate at the boundary you do not control**, not everywhere. Data
+  arriving from an API, from storage, or from a URL is unchecked in a
+  JavaScript project in a way it is not in a TypeScript one. Narrow it once,
+  where it enters — in the hook or a utility — rather than defending against
+  a missing field at twenty render sites.
+
+## What changes: the barrel exports values only
+
+`export type *` has no JavaScript equivalent, so a barrel re-exports values
+and nothing else. A `@typedef` is reachable through the file that declares
+it (`import('./types').OrderPanelProps`), which is the closest available
+form and needs no barrel entry.
+
+Everything else about the barrel is unchanged: re-exports only, no logic,
+and it is still the folder's public surface —
+[`component-structure.md`](./component-structure.md).
+
+## Adopting TypeScript later
+
+Nothing here is an argument against doing so, and the structure this
+rulebook asks for is most of the work of getting there: a project whose
+components are already split into a view, a hook and pure utilities, with
+shapes already written as `@typedef`, converts file by file. A project whose
+logic is welded into 1,000-line views does not, whatever its file
+extensions.
+
+If a project does adopt it, `types.js` becomes `types.ts`, the `@typedef`
+blocks become real declarations, and nothing else in this rulebook changes —
+which is the point of writing the structural rules independently of the
+language in the first place.
+
+## What is enforced
+
+- Every frontend guard reads `.js` and `.jsx` alongside `.ts` and `.tsx`:
+  `component-folder-shape`, `component-view-logic`, `barrel-exports-only`,
+  `hook-locality`, `colocated-tests`, `naming-standards` (under
+  `conventions.language: "javascript"`), `file-size-limit`, `import-depth`
+  and `api-import-boundary`.
+- `component-types-file` is TypeScript-only by nature — it looks for an
+  inline `interface`/`type` declaration, and JavaScript has neither. The
+  convention it encodes (shapes belong in the folder's own types file) still
+  holds; it is review-enforced here.
+- `no-explicit-any` is inert, as described above.
 
 ---
 

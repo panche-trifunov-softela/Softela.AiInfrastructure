@@ -32,6 +32,50 @@ belongs inside that consumer's own folder**, where it can be found, changed
 and deleted along with it. A shared root full of single-use code is the same
 problem as an oversized file, just spread out across more locations.
 
+## A feature's parts live together
+
+A route-level screen and the pieces only that screen renders are one
+feature. Splitting them across two parallel trees — the screen under a
+`pages/` root, its dialogs and panels under a mirrored path in a
+`components/` root — is a common shape and a costly one:
+
+```
+BAD — one feature, two trees, mirrored by hand
+  src/pages/configuration/service-inspection/PestTypes/PestTypes.jsx
+  src/components/Configuration/ServiceInspection/PestTypes/AddEditPestType.jsx
+```
+
+```
+GOOD — one feature, one folder
+  src/pages/PestTypes/
+    PestTypes.jsx
+    usePestTypes.js
+    index.js
+    components/
+      AddEditPestType/
+        AddEditPestType.jsx
+        useAddEditPestType.js
+        index.js
+```
+
+The mirrored form has to be kept in step by hand, in two places, forever. It
+guarantees a long climbing import in one direction (see
+[`module-imports.md`](./module-imports.md)), it lets the two halves drift
+apart in naming — which is how the same concept ends up spelled two ways —
+and it means nothing about the feature can be moved, extracted or deleted as
+a unit, because half of it is somewhere else.
+
+**A component with exactly one consumer belongs inside that consumer's own
+folder**, and a route-level screen is a consumer like any other. This is not
+a new rule; it is "the root is for shared code" applied to a screen rather
+than to a utility. The `components/` root is for what more than one screen
+renders — promoted there on the second consumer, like everything else.
+
+`pages/` (or `routes/`, or whatever a project calls it) stays what it is: the
+route-level entry points, each one a component folder of the ordinary shape.
+Nesting the route hierarchy inside it is fine; duplicating that hierarchy in
+a second tree is what this section is against.
+
 ## A folder that has shrunk to one occupant
 
 A top-level folder sometimes ends up holding exactly one thing after the

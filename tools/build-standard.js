@@ -55,11 +55,20 @@ const DOCUMENTS = [
      * Declared explicitly, mirroring the source document's own section
      * order: status and how to read it, why the rulebook exists,
      * principles, shared code boundaries, the component-folder shape and
-     * its layer rules, naming, file size, state, types, the API layer,
-     * local development configuration, documentation, testing, agent
-     * rules, git flow, and finally the migration
-     * approach — so reading the generated file top to bottom reads the way
-     * the original document did.
+     * its layer rules, naming, imports, file size, state, types, the API
+     * layer, local development configuration, documentation, testing, agent
+     * rules, git flow, what changes on a project without TypeScript, and
+     * finally the migration approach — so reading the generated file top to
+     * bottom reads the way the original document did.
+     *
+     * `module-imports.md` sits directly after `naming.md`: both are about
+     * how a path is written, and the import rules lean on the folder shape
+     * and the layer boundaries stated just above them.
+     *
+     * `javascript-projects.md` sits near the end, beside the migration
+     * approach, because it is read as an amendment to everything above it
+     * rather than as a section of its own — it makes no sense before the
+     * rules it qualifies.
      */
     sectionOrder: [
       "README.md",
@@ -69,6 +78,7 @@ const DOCUMENTS = [
       "component-structure.md",
       "layer-boundaries.md",
       "naming.md",
+      "module-imports.md",
       "file-size.md",
       "state-management.md",
       "types.md",
@@ -78,6 +88,7 @@ const DOCUMENTS = [
       "testing.md",
       "agent-rules.md",
       "git-flow.md",
+      "javascript-projects.md",
       "migration-approach.md",
     ],
   },

@@ -49,8 +49,16 @@ const SCAN_EXTENSIONS = [".ts", ".tsx", ".js", ".jsx"];
 /** Extensions that can hold a component's own file directly (no folder). */
 const COMPONENT_FILE_EXTENSIONS = new Set([".tsx", ".jsx"]);
 
-/** A new hook file's own extension: hooks are `.ts`, or `.tsx` when they return JSX. */
-const HOOK_FILE_EXTENSION = /\.tsx?$/i;
+/**
+ * A new hook file's own extension: a hook is `.ts`/`.js`, or `.tsx`/`.jsx`
+ * when it genuinely returns JSX.
+ *
+ * The correspondence scan below has always read `.js`/`.jsx` when looking for
+ * the component a hook might belong to; restricting the hook itself to `.ts`
+ * made the rule unable to fire at all on a JavaScript project, where the
+ * shared-hooks root fills up exactly the same way.
+ */
+const HOOK_FILE_EXTENSION = /\.[jt]sx?$/i;
 
 /**
  * A leading `use` sitting on a real word boundary — `useFooBar`, never

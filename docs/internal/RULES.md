@@ -286,6 +286,15 @@ session dropped a component straight into the shared components root and the
 `ask` went unseen: on a host that auto-approves, `ask` is invisible and the
 write lands anyway.)
 
+**A colocated `use*.tsx` / `use*.jsx` is exempt.** A `.ts`/`.js` sibling
+always was — the folder is named after the component, not after the hook
+beside it — but a hook legitimately takes a view extension when it genuinely
+returns JSX, so the extension alone cannot tell the two apart. Without the
+exemption, `RouteConfiguration/useRouteConfiguration.jsx` was denied for not
+sitting in a `useRouteConfiguration` folder of its own, which is the opposite
+of the layout this rule enforces. A component whose name merely begins with
+the letters `use` (`userCard.jsx`) is not a hook and is still judged.
+
 ### `component-types-file` · deny · `stacks: ["frontend"]` · `requiresConfig: ["conventions.componentFolders"]`
 A new component's own `.tsx`, or a component-folder hook (`use*.ts`/`use*.tsx`),
 may not declare a top-level `interface` or `type` of its own. The standard
@@ -326,10 +335,14 @@ precisely what a view is supposed to do.
 Fires only when creating a NEW file, same reasoning as its two siblings:
 extracting the logic out of an existing view is a refactor, not a condition of
 touching it. Governs the view alone — never the folder's own `use*` file
-(including `use*.tsx`, which takes that extension when it genuinely returns
-JSX), never the barrel, never a test. Content is masked before scanning, so a
-marker named only in a comment or a string does not count, and an import
-without a call does not either.
+(including `use*.tsx` and `use*.jsx`, which take a view extension when they
+genuinely return JSX), never the barrel in any extension, never a test.
+Content is masked before scanning, so a marker named only in a comment or a
+string does not count, and an import without a call does not either.
+
+The hook and barrel exemptions read `.js`/`.jsx` as well as `.ts`/`.tsx`. On a
+JavaScript project a `use*.jsx` hook is still a hook, and denying it for
+holding state — the one thing it exists to hold — is exactly backwards.
 
 ### `hook-locality` · deny · `stacks: ["frontend"]` · `requiresConfig: ["conventions.sharedHooks", "conventions.componentFolders"]`
 The global shared-hooks root (`conventions.sharedHooks`) is for a hook reused
@@ -351,6 +364,11 @@ rule trusts. A hook with no matching component, a hook already inside its own
 component's folder, an edit to an existing file, a barrel, and a test file are
 all left alone. The fix names the component's own folder as the destination.
 
+The new hook file itself may be `.ts`, `.tsx`, `.js` or `.jsx`. The
+correspondence scan always read `.js`/`.jsx` when looking for the component;
+restricting the hook to the TypeScript pair meant the rule could not fire at
+all on a JavaScript project, whose shared-hooks root fills up the same way.
+
 ### `colocated-tests` · deny · `stacks: ["frontend"]` · `requiresConfig: ["conventions.testFolder"]`
 A test file must sit in a `__tests__` directory (`conventions.testFolder`)
 inside the folder of the component it covers, not in a distant test tree, and
@@ -361,10 +379,45 @@ incident: a deterministic path check with only one violation shape, and a
 fix that always names the corrected path.
 
 ### `barrel-exports-only` · deny · `stacks: ["frontend"]` · `requiresConfig: ["conventions.componentFolders"]`
-An `index.ts` / `index.tsx` inside a component folder may contain only imports,
+A barrel `index` file inside a component folder may contain only imports,
 re-exports, comments and `export type` lines. Any statement, declaration or
 side effect is a denial, because a barrel with logic in it is what turns an
 import graph into a load-order problem.
+
+Every module extension a project in scope actually writes a barrel in counts —
+`.ts`, `.tsx`, `.js`, `.jsx`, `.mts`, `.cts`, `.mjs`, `.cjs`. Keying it to the
+TypeScript pair alone left the rule silently inert on every JavaScript
+project, where an `index.js` has exactly the same load-order problem.
+
+### `import-depth` · deny · `stacks: ["frontend"]` · `requiresConfig: ["conventions.pathAliases"]`
+A module specifier climbing at least `limits.relativeImportDepth` folders
+(default 3) is denied in favour of the project's own path alias.
+`../../../../utils/storage` names nothing a reader can place, and it silently
+retargets the moment either file moves — which is what stops a component
+folder being relocated or extracted without a search-and-replace across the
+tree, the property the folder shape exists to give it.
+
+Four gates, and all four have to hold, which is what keeps it quiet:
+
+- **The project declares `conventions.pathAliases`.** A rule whose fix is
+  "first go and configure an alias" is a rule that gets switched off, and a
+  fix naming an alias the bundler cannot resolve is worse than no rule at
+  all. A project that has not adopted aliases never hears from this one.
+- **The specifier climbs at least the threshold.** One or two levels is
+  ordinary composition inside a feature; three is where the specifier has
+  left it.
+- **The resolved target lands under a declared alias root**, so the fix names
+  the exact replacement. A climb that leaves every configured root produces
+  nothing, because there would be nothing to rewrite it to.
+- **The file is new** (`newCodeOnly`), like every other structural rule.
+
+Type-only imports count here, unlike in `api-import-boundary`: that rule asks
+about runtime coupling, this one asks whether the specifier can be read and
+whether it survives a move, and a type-only import fails both the same way.
+Comments are stripped first, so a specifier written only in prose or in a
+commented-out line is never read as an import. Where two alias roots both
+contain the target, the longest wins, so `@components/Common/Table` is
+preferred over `@/components/Common/Table`.
 
 ### `api-import-boundary` · deny · `stacks: ["frontend"]` · `requiresConfig: ["conventions.componentFolders", "conventions.apiLayer"]`
 A file under `conventions.componentFolders` may not import from
@@ -393,6 +446,19 @@ Every one of these checks is a deterministic pattern match against the file's
 own name or a declaration in its own content — there is no near-miss or
 judgement-call branch here to keep at `ask`, so a genuine mismatch denies,
 naming the corrected identifier as the fix.
+
+`language: "javascript"` runs the same checks as `"typescript"`, and both the
+component check (`.tsx`/`.jsx`) and the hook check (`.ts`/`.tsx`/`.js`/`.jsx`)
+read the JavaScript extensions. The convention is the convention whether or
+not the project has adopted TypeScript; the hook check was the one that did
+not say so, and read `.ts`/`.tsx` alone.
+
+The two checks partition the space rather than overlapping: **a `use`-prefixed
+name is a hook, whatever extension it carries**, so the component check skips
+it. Judging a JSX-returning hook as a component denied it with a fix — rename
+`useColumnRenderer` to `UseColumnRenderer` — that was wrong in both
+directions. A component merely beginning with the letters `use`
+(`userCard.tsx`) does not match the hook shape and is still judged.
 
 ### `patch-manifest` · deny · `stacks: ["backend"]` · `requiresConfig: ["patchManifest.filePattern", "patchManifest.databasePattern", "patchManifest.requiredEntry"]`
 Backend only. A patch manifest that lists database changes without its upgrade

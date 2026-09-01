@@ -22,8 +22,12 @@ Reread, specifically:
 - [`component-structure.md`](./component-structure.md) and
   [`layer-boundaries.md`](./layer-boundaries.md) — the shape every new
   component follows and what each file inside it may and may not do.
-- [`naming.md`](./naming.md) and [`file-size.md`](./file-size.md) — the
-  conventions and thresholds a reviewer will actually check against.
+- [`naming.md`](./naming.md), [`module-imports.md`](./module-imports.md) and
+  [`file-size.md`](./file-size.md) — the conventions, the import rules and
+  the thresholds a reviewer will actually check against.
+- If the project is JavaScript rather than TypeScript:
+  [`javascript-projects.md`](./javascript-projects.md), which is short and
+  says what changes (little) and what does not (everything else).
 - [`code-documentation.md`](./code-documentation.md) — how comments and
   doc blocks are written here; applies to the first line you write, not
   only to a finished PR.

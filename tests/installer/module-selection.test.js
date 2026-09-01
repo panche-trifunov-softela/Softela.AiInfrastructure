@@ -88,11 +88,11 @@ suite("installer/module-selection", ({ test, eq, deepEq, ok, fakeHome }) => {
   test("a first interactive install shows every shipped module, marks the defaultEnabled ones, and stores exactly what the developer selected — including deselecting one that is on by default", () => {
     const home = fakeHome();
     // The trailing blank line accepts the review step's own "Install now" default.
-    const result = runCli(home, ["install", "--agent", "claude"], { env: FORCE_TTY_ENV, input: "1,3,4\n\n\n\n\n" });
+    const result = runCli(home, ["install", "--agent", "claude"], { env: FORCE_TTY_ENV, input: "1,4,5\n\n\n\n\n" });
     eq(result.code, 0, `install stdout:\n${result.stdout}\n${result.stderr}`);
     ok(result.stdout.includes("Which modules should be enabled"), "the module-selection question must be asked on a first install");
     ok(result.stdout.includes("1) Agent orchestration"), `expected every shipped module listed, got:\n${result.stdout}`);
-    ok(result.stdout.includes("5) Session cleanup"), "the not-defaultEnabled module must still be listed as a choice");
+    ok(result.stdout.includes("6) Session cleanup"), "the not-defaultEnabled module must still be listed as a choice");
     ok(/Agent orchestration[^\n]*\(default\)/.test(result.stdout), "a defaultEnabled module must be marked (default)");
     ok(!/Session cleanup[^\n]*\(default\)/.test(result.stdout), "a module that is not defaultEnabled must not be marked (default)");
 
@@ -100,7 +100,7 @@ suite("installer/module-selection", ({ test, eq, deepEq, ok, fakeHome }) => {
     deepEq(
       state.modules,
       ["agent-orchestration", "memory-as-context", "reply-language"],
-      "typing \"1,3,4\" must deselect analyze-first (on by default) and never enable session-cleanup",
+      "typing \"1,4,5\" must deselect analyze-first and frontend-workflows (both on by default) and never enable session-cleanup",
     );
   });
 
@@ -131,7 +131,7 @@ suite("installer/module-selection", ({ test, eq, deepEq, ok, fakeHome }) => {
     ok(!result.stdout.includes("Which modules should be enabled"), "--yes must skip the module-selection question");
     deepEq(
       readState(home, "claude").modules.slice().sort(),
-      ["agent-orchestration", "analyze-first", "memory-as-context"],
+      ["agent-orchestration", "analyze-first", "frontend-workflows", "memory-as-context"],
     );
   });
 
@@ -142,7 +142,7 @@ suite("installer/module-selection", ({ test, eq, deepEq, ok, fakeHome }) => {
     ok(!result.stdout.includes("Which modules should be enabled"), "a non-interactive stdin must never be asked the module-selection question");
     deepEq(
       readState(home, "claude").modules.slice().sort(),
-      ["agent-orchestration", "analyze-first", "memory-as-context"],
+      ["agent-orchestration", "analyze-first", "frontend-workflows", "memory-as-context"],
     );
   });
 
@@ -250,7 +250,7 @@ suite("installer/module-selection", ({ test, eq, deepEq, ok, fakeHome }) => {
   test("--agent all on two fresh homes asks the module question and each option question exactly once, and both agents end up with the identical stored configuration", () => {
     const home = fakeHome();
     // The trailing blank line accepts the review step's own "Install now" default.
-    const result = runCli(home, ["install", "--agent", "all"], { env: FORCE_TTY_ENV, input: "1,3,4\n\n\n\n\n" });
+    const result = runCli(home, ["install", "--agent", "all"], { env: FORCE_TTY_ENV, input: "1,4,5\n\n\n\n\n" });
     eq(result.code, 0, `install stdout:\n${result.stdout}\n${result.stderr}`);
 
     eq(countOccurrences(result.stdout, "Which modules should be enabled"), 1, "the module-selection question must be asked exactly once for two fresh agents, not once per agent");
@@ -310,7 +310,7 @@ suite("installer/module-selection", ({ test, eq, deepEq, ok, fakeHome }) => {
     ok(result.stdout.includes("Which modules should be enabled for codex?"), "the fresh agent's group must ask the module-selection question, labelled");
 
     const codexState = readState(home, "codex");
-    deepEq(codexState.modules.slice().sort(), ["agent-orchestration", "analyze-first", "memory-as-context"]);
+    deepEq(codexState.modules.slice().sort(), ["agent-orchestration", "analyze-first", "frontend-workflows", "memory-as-context"]);
   });
 
   test("--agent all still asks nothing on every skip path: non-TTY, --yes, --modules", () => {

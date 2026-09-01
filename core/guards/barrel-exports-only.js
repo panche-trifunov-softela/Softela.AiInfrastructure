@@ -35,8 +35,15 @@ function maskCommentsAndStrings(src) {
 /** Tool names this rule inspects: file-write calls on both hosts. */
 const WRITE_TOOLS = /^(Write|Edit|MultiEdit|NotebookEdit|apply_patch|write_file)$/;
 
-/** Matches a barrel file's name. */
-const INDEX_FILE = /^index\.(ts|tsx)$/i;
+/**
+ * Matches a barrel file's name, in every extension a project this rulebook
+ * covers actually writes one in. A JavaScript project's `index.js` is the
+ * same barrel as a TypeScript project's `index.ts` and has the same
+ * load-order problem when logic creeps into it; keying the rule to `.ts`
+ * alone left it silently inert on every project that has not adopted
+ * TypeScript.
+ */
+const INDEX_FILE = /^index\.(tsx?|jsx?|mts|cts|mjs|cjs)$/i;
 
 /**
  * Resolves a context's file path to a forward-slash path relative to the

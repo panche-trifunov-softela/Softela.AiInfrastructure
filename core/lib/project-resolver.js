@@ -43,6 +43,14 @@ const MINIMAL_DEFAULT = Object.freeze({
  * the repository-root `.env` that carries the credentials. `**` followed by
  * a separator therefore means "zero or more directories", not "one or more".
  *
+ * `{a,b,c}` is alternation, so one pattern can name several roots —
+ * `src/{components,pages,layouts}/**`. Every config field that takes a glob
+ * takes exactly one, and a project whose components legitimately live under
+ * more than one root otherwise has no way to say so. Only a brace group that
+ * closes before the next separator and actually contains a comma is read
+ * this way; anything else keeps the literal, escaped meaning it has always
+ * had, so a path with a real brace in it is unaffected.
+ *
  * @param {string} glob The glob pattern.
  * @returns {RegExp | null} The compiled regex, or `null` when `glob` is not
  * a string or fails to compile.
@@ -68,6 +76,14 @@ function globToRegex(glob) {
       i += 1;
       continue;
     }
+    if (c === "{") {
+      const group = readBraceAlternation(glob, i);
+      if (group) {
+        out += group.pattern;
+        i = group.next;
+        continue;
+      }
+    }
     if ("\\^$+?.()|[]{}".indexOf(c) !== -1) out += `\\${c}`;
     else out += c;
     i += 1;
@@ -77,6 +93,38 @@ function globToRegex(glob) {
   } catch {
     return null;
   }
+}
+
+/**
+ * Reads a `{a,b,c}` alternation group starting at `start`, translating each
+ * branch into one alternative.
+ *
+ * Deliberately narrow. The group must close before the next `/` and must
+ * hold at least one comma, so `{}` and `{single}` stay the literal, escaped
+ * braces they have always been, and an unclosed `{` never swallows the rest
+ * of the pattern. A branch is matched literally: a nested brace, a `*` or a
+ * separator inside one disqualifies the whole group, which keeps this a
+ * readable alternation rather than half a glob parser.
+ *
+ * @param {string} glob The whole glob pattern.
+ * @param {number} start Index of the opening `{`.
+ * @returns {{pattern: string, next: number} | null} The translated
+ * alternation and the index just past the closing `}`, or `null` when the
+ * group is not one this function reads.
+ */
+function readBraceAlternation(glob, start) {
+  const end = glob.indexOf("}", start + 1);
+  if (end === -1) return null;
+
+  const body = glob.slice(start + 1, end);
+  if (!body.includes(",")) return null;
+  if (/[{}/*]/.test(body)) return null;
+
+  const branches = body.split(",");
+  if (branches.some((branch) => branch.length === 0)) return null;
+
+  const escaped = branches.map((branch) => branch.replace(/[\\^$+?.()|[\]{}]/g, "\\$&"));
+  return { pattern: `(?:${escaped.join("|")})`, next: end + 1 };
 }
 
 /**
