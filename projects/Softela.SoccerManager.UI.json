@@ -23,6 +23,9 @@
     "sharedHooks": "src/hooks/**",
     "apiLayer": "src/services/api/**",
     "contractTypes": "src/types/**",
-    "testFolder": "__tests__"
+    "testFolder": "__tests__",
+    "pathAliases": {
+      "@": "src"
+    }
   }
 }
