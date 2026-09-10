@@ -15,7 +15,5 @@
     "pattern": "^(feature|bugfix|fix|hotfix)/((task|ticket)[_-])?[A-Za-z0-9][\\w.-]*$",
     "action": "ask",
     "preferred": "feature/short-description"
-  },
-
-  "memoryLocation": "infrastructure"
+  }
 }
