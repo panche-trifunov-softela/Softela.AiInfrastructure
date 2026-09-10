@@ -1,0 +1,31 @@
+{
+  "$schema": "../core/schema/project.schema.json",
+  "id": "Softela.SoccerManager.UI",
+  "stack": "frontend",
+
+  "match": {
+    "remotes": ["*/Softela.SoccerManager.UI"],
+    "paths": ["Softela.SoccerManager.UI", "SoccerManager.UI"]
+  },
+
+  "baseBranches": ["main"],
+  "releaseBranchPattern": "^releases/",
+
+  "branchNaming": {
+    "pattern": "^(feature|bugfix|fix|hotfix)/((task|ticket)[_-])?[A-Za-z0-9][\\w.-]*$",
+    "action": "ask",
+    "preferred": "feature/short-description"
+  },
+
+  "conventions": {
+    "language": "typescript",
+    "componentFolders": "src/{components,pages,layouts}/**",
+    "sharedHooks": "src/hooks/**",
+    "apiLayer": "src/services/api/**",
+    "contractTypes": "src/types/**",
+    "testFolder": "__tests__",
+    "pathAliases": {
+      "@": "src"
+    }
+  }
+}
