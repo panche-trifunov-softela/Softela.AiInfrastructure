@@ -159,6 +159,14 @@
         "maxLineCommentRun": { "type": "integer", "minimum": 1 }
       }
     },
+    "delegation": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "adviseAt": { "type": "integer", "minimum": 1 },
+        "denyAt": { "type": "integer", "minimum": 1 }
+      }
+    },
     "reuseBeforeNew": {
       "type": "object",
       "additionalProperties": false,

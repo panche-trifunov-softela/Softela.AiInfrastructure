@@ -5,29 +5,58 @@ Default: **on**. No options.
 Strong models analyse, plan, decide and talk to the developer; cheaper
 models read files, write code and do the routine work. This module activates
 two already-built guards, seeds a matching set of model/effort/approval
-defaults, and — the only prompt contribution it makes — switches on the
-"Delegation and model tier" section of the base rulebook every install
-already carries (`core/installer/rulebook.js#buildDelegationSection`,
+defaults, and switches on the "Delegation and model tier" section of the
+base rulebook every install already carries
+(`core/installer/rulebook.js#buildDelegationSection`,
 `core/installer/plan.js#planGlobalInstructions`), naming that host's own
 concrete tier ids rather than shipping a second, generic copy of the same
-instruction in a `prompt.md` of its own. Disabling the module removes that
-section from the managed block; the seed settings below are untouched (see
-"Turning it off").
+instruction in a `prompt.md` of its own. It also registers a `UserPromptSubmit`
+reminder hook — see "The reminder hook" below — so the rule stays live for the
+whole session, not only for the first few turns. Disabling the module removes
+the rulebook section and unregisters the hook; the seed settings below are
+untouched (see "Turning it off").
 
 ## What it activates
 
 `guards: ["subagent-model", "reasoning-effort-floor"]` — both rules already
 live in `core/guards/` with `requiresModule: "agent-orchestration"`. Enabling
 this module is what turns them on; disabling it turns them back off. No new
-hook registration is needed for this — both rules run inside the dispatcher
-every project already registers for `PreToolUse`, gated by whether
-`agent-orchestration` is in the enabled module set.
+hook registration is needed for either guard specifically — both rules run
+inside the dispatcher every project already registers for `PreToolUse`,
+gated by whether `agent-orchestration` is in the enabled module set. (The
+module does register one hook of its own, for the reminder below — that
+registration has nothing to do with either guard.)
 
 - **`subagent-model`** — denies a spawn with no explicit model; asks on a
   spawn more expensive than the session's own tier, or on a frontier-tier
   spawn regardless of the session.
 - **`reasoning-effort-floor`** — denies a spawn whose reasoning effort is set
   explicitly below `medium`.
+
+## The reminder hook
+
+`hooks/inject-delegation-mode.js` is a `UserPromptSubmit` reminder,
+registered for both agents, that re-states the "you are the orchestrator"
+rule next to every developer prompt instead of relying solely on the
+rulebook section injected once at session start — in a long session that
+block ends up buried under everything that followed. It prints only
+`hookSpecificOutput.additionalContext` — the developer never sees it — and
+never blocks, rewrites, or fails a turn: unparseable stdin, a non-object
+payload, or a subagent's own prompt event (`agent_id`/`agent_type` present)
+all exit silently, and a failed log append (below) never stops the reminder
+from printing.
+
+It also appends one task-boundary marker line — `{ts, agent, event:
+"UserPromptSubmit", sessionId}` — to the same day's guard-activity log on
+every main-session prompt, via `paths.guardLogPath`/`fs-safe.appendLineSafe`.
+A prompt is the only reliable boundary between one task and the next in
+either host's event stream, and a guard reading the log back needs that
+boundary to tell "the agent did this itself" apart from "the agent
+delegated it" for the task actually in front of it right now, not a
+previous one that already finished — see `delegate-bulk-reading`.
+`analyze-first`'s own `inject-plan-gate.js` is the sibling hook doing the
+same reminder-only job for the plan-first gate, minus the marker; see that
+module's README.
 
 ## What it seeds
 
@@ -146,8 +175,8 @@ setting declares both or neither.
 ## Turning it off
 
 `softela-ai module disable agent-orchestration` deactivates both guards (a spawn
-with no model, or with a low effort, is no longer blocked) and removes the
-"Delegation and model tier" section from the managed block. Every `seed`
-setting above is left exactly as it is — those became the developer's own
-the moment they were written, and disabling the module says so rather than
-reverting them silently.
+with no model, or with a low effort, is no longer blocked), removes the
+"Delegation and model tier" section from the managed block, and unregisters
+the reminder hook. Every `seed` setting above is left exactly as it is —
+those became the developer's own the moment they were written, and disabling
+the module says so rather than reverting them silently.

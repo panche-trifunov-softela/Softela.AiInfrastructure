@@ -5,8 +5,16 @@
   "defaultEnabled": true,
   "requires": [],
   "guards": [],
-  "files": [],
-  "hooks": [],
+  "files": [
+    { "from": "hooks/inject-plan-gate.js", "to": "hooks/inject-plan-gate.js" },
+    { "from": "hooks/analyze-first-core-lib.js", "to": "hooks/analyze-first-core-lib.js" }
+  ],
+  "hooks": [
+    { "agent": "claude", "event": "UserPromptSubmit", "matcher": null,
+      "command": "{{NODE}} {{INSTALLED}}/hooks/inject-plan-gate.js" },
+    { "agent": "codex", "event": "UserPromptSubmit", "matcher": null,
+      "command": "{{NODE}} {{INSTALLED}}/hooks/inject-plan-gate.js" }
+  ],
   "settings": [],
   "options": {}
 }

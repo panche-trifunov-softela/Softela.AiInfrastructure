@@ -93,6 +93,38 @@ function writeJsonAtomic(p, obj) {
 }
 
 /**
+ * Appends one line to a file, creating its parent directory if needed.
+ *
+ * Deliberately NOT built on {@link writeTextAtomic}/`writeJsonAtomic`: those
+ * exist for a file exactly one writer owns, where a temp-file-then-rename
+ * sequence is the right way to avoid a half-written result. A guard-activity
+ * log is the opposite shape — many separate processes (a subagent spawns its
+ * own dispatch process per tool call) can be appending to the same day's log
+ * at the same moment, and an atomic rewrite would first have to read the
+ * whole file, add a line, and write it back; two such rewrites racing lose
+ * whichever one finished second. A single `fs.appendFileSync` call opens the
+ * file with `O_APPEND`, which every writer here uses, so concurrent small
+ * writes interleave as whole lines rather than corrupting each other or
+ * silently losing one.
+ *
+ * @param {string} filePath The file to append to.
+ * @param {string} line The line to append, without its own trailing newline;
+ * a `\n` is added, and any `\r\n` already in `line` is normalised to `\n`
+ * first.
+ * @returns {boolean} `true` when the line was written, `false` on any
+ * failure. Never throws.
+ */
+function appendLineSafe(filePath, line) {
+  try {
+    ensureDir(path.dirname(filePath));
+    fs.appendFileSync(filePath, `${normalise(line)}\n`, "utf8");
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
  * Computes the SHA-256 of a text's content after line-ending normalisation,
  * so a CRLF checkout is never read as a local modification.
  *
@@ -210,6 +242,7 @@ module.exports = {
   readJson,
   writeTextAtomic,
   writeJsonAtomic,
+  appendLineSafe,
   sha256,
   copyFileSafe,
   ensureDir,

@@ -125,6 +125,13 @@ at a detail nobody asked it to guess at.
   explicit go-ahead before building it.
 - No guard. This one is genuinely behavioural, and pretending otherwise by
   bolting on a hook that blocks the first write of a session would be theatre.
+- Hook: `hooks/inject-plan-gate.js`, a `UserPromptSubmit` reminder (both
+  hosts) that re-states the same gate next to every developer prompt instead
+  of only once at session start, where a long session buries it under
+  everything that followed. It prints only
+  `hookSpecificOutput.additionalContext` — agent-only context, never a
+  `systemMessage` the developer would see — which is what keeps it from
+  becoming the very theatre the bullet above rules out.
 - Tests: the rulebook's section appears while the module is enabled, and is
   gone from the managed block once it is disabled.
 
@@ -219,6 +226,20 @@ section, naming that host's own concrete tier ids.
 
 Activates `subagent-model`, `reasoning-effort-floor`, `delegate-bulk-reading`
 and `no-nested-delegation` (see `RULES.md`).
+
+Hook: `hooks/inject-delegation-mode.js`, a `UserPromptSubmit` reminder (both
+hosts) that re-states the orchestrator rule next to every developer prompt,
+the same way `analyze-first`'s own hook does for the plan-first gate — see
+that module's entry above, including the agent-only-context guarantee. It
+also appends one task-boundary marker (`event: "UserPromptSubmit"`, carrying
+only `ts`, `agent`, `event` and `sessionId`) to the same day's
+guard-activity log on every main-session prompt
+(`CONTRACTS.md` §7b/§7c) — this is what lets
+`core/lib/task-tally.js#readTaskTally`, and through it
+`delegate-bulk-reading`'s tally-backed tier, know where the task in front of
+the agent right now actually starts. Silent on a subagent's own prompt event
+— there is no task boundary to mark on its behalf, the same reasoning that
+keeps the reminder itself from printing there.
 
 Shipped defaults, **all `seed` mode** — an update never downgrades a developer
 who has chosen something stronger:
@@ -325,6 +346,11 @@ quickly and are rarely worth keeping.
 - **Two arguments, `--all` and `--apply`.** Without either it sweeps the
   sessions nearest the work — the current project on Claude Code, today on
   Codex, which files transcripts by date rather than by project.
+- **`--all` also widens the sweep to guard activity logs.** These have no
+  project of their own to scope a plain run to, so they are touched only
+  under `--all`: every `guard-activity-*.jsonl` file under
+  `<agentHome>/.softela-ai/logs/` is reported and, with `--apply`, deleted —
+  except today's, which is always kept, the same as the live session.
 - **Dry run by default.** Without `--apply` it lists what would go and the
   space it would free, and deletes nothing. The command runs the dry run,
   reports the numbers, asks, and only then applies — it never adds `--apply`

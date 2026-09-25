@@ -28,7 +28,11 @@
  * Options a developer sees:
  *   --all                 Every session except the live one. Without it,
  *                         Claude Code sweeps the current directory's project
- *                         and Codex sweeps today.
+ *                         and Codex sweeps today. Also widens the sweep to
+ *                         this host's guard-activity logs, which have no
+ *                         project of their own to scope a plain run to;
+ *                         today's log is always kept, the same as the live
+ *                         session.
  *   --apply               Actually delete. Without it, report only.
  *
  * Options the installed command may pass for itself, all optional:
@@ -65,6 +69,21 @@ const NEVER_DELETE = new Set(["memory"]);
 
 /** Where each host keeps its session store, relative to the agent home. */
 const SESSIONS_DIR_NAME = { claude: "projects", codex: "sessions" };
+
+/**
+ * Where guard-activity logs live, relative to the agent home: one file per
+ * calendar day, shared across every project on the host rather than filed
+ * per-project the way a session is. This literal is hardcoded rather than
+ * `require`d from `core/lib/paths.js#guardLogPath` — this script stays
+ * self-contained, dependent on nothing else in the repository, exactly as
+ * its own README promises. `tests/modules/session-cleanup.test.js` pins this
+ * literal against `guardLogPath` directly, so the two can never silently
+ * drift apart.
+ */
+const GUARD_LOG_DIR_NAME = path.join(".softela-ai", "logs");
+
+/** Only a real guard-activity log file name matches; anything else under the log directory is left alone. */
+const GUARD_LOG_NAME = /^guard-activity-\d{4}-\d{2}-\d{2}\.jsonl$/;
 
 const argv = process.argv.slice(2);
 const flag = (name) => argv.includes(`--${name}`);
@@ -116,6 +135,10 @@ const SESSIONS_DIR = path.join(agentHome, SESSIONS_DIR_NAME[agent]);
 const sweepAll = flag("all");
 const apply = flag("apply");
 
+// Guard logs are touched only under `--all` — collected here, once, so a
+// plain per-project run never so much as lists the shared log directory.
+const guardLogs = sweepAll ? collectGuardLogs() : [];
+
 /**
  * Checks whether a path passes through a directory this tool must never
  * touch.
@@ -132,6 +155,45 @@ function isProtectedPath(target) {
   return String(target)
     .split(/[/\\]+/)
     .some((segment) => NEVER_DELETE.has(segment.toLowerCase()));
+}
+
+/**
+ * Today's date, formatted the way `core/lib/paths.js#formatLogDate` names a
+ * guard-activity log file: local time, not UTC, matching the process that
+ * writes the log so the two can never disagree about which file is today's.
+ *
+ * @returns {string} Today's date as `YYYY-MM-DD`.
+ */
+function todaysGuardLogDate() {
+  const now = new Date();
+  const two = (n) => String(n).padStart(2, "0");
+  return `${now.getFullYear()}-${two(now.getMonth() + 1)}-${two(now.getDate())}`;
+}
+
+/**
+ * Collects the guard-activity logs eligible for this sweep: every file under
+ * `<agentHome>/.softela-ai/logs/` matching the log's own naming pattern,
+ * except today's — kept unconditionally, the equivalent for this shared,
+ * per-day log of never deleting the live session.
+ *
+ * @returns {{path: string, bytes: number}[]} The eligible logs.
+ */
+function collectGuardLogs() {
+  const dir = path.join(agentHome, GUARD_LOG_DIR_NAME);
+  let entries;
+  try {
+    entries = fs.readdirSync(dir, { withFileTypes: true });
+  } catch {
+    return [];
+  }
+
+  const today = `guard-activity-${todaysGuardLogDate()}.jsonl`;
+  return entries
+    .filter((e) => e.isFile() && GUARD_LOG_NAME.test(e.name) && e.name !== today)
+    .map((e) => {
+      const full = path.join(dir, e.name);
+      return { path: full, bytes: sizeOf(full) };
+    });
 }
 
 /**
@@ -355,10 +417,41 @@ function formatAge(mtimeMs) {
   return `${Math.floor(hours / 24)}d ago`;
 }
 
+/**
+ * Reports guard-activity logs on their own labelled line, separate from the
+ * session report, and deletes them once `--apply` is given.
+ *
+ * A no-op whenever `sweepAll` is false: guard logs are per-day and shared
+ * across every project on the host, so the plain, per-project run must
+ * neither report nor delete them — there is no flag that reaches them
+ * outside `--all`.
+ *
+ * @param {{path: string, bytes: number}[]} logs Every eligible log, already
+ * excluding today's (see {@link collectGuardLogs}).
+ * @returns {void}
+ */
+function reportGuardLogs(logs) {
+  if (!sweepAll) return;
+
+  console.log(
+    `\nGuard activity logs: ${apply ? "DELETING" : "WOULD DELETE"} ${logs.length} file(s), ` +
+      `${mb(logs.reduce((n, l) => n + l.bytes, 0))} MB (today's log is always kept).`,
+  );
+  if (!apply) return;
+
+  const failures = [];
+  for (const log of logs) remove(log.path, failures);
+  if (failures.length) {
+    console.log(`Guard activity logs: ${failures.length} item(s) refused:`);
+    failures.forEach((f) => console.log(`  ${f}`));
+  }
+}
+
 const { dirs, scope } = resolveScope();
 if (!dirs.length) {
   const widen = sweepAll ? "" : "\nPass --all to sweep every session instead.";
   console.log(`No sessions found for ${scope} under ${SESSIONS_DIR}.${widen}`);
+  reportGuardLogs(guardLogs);
   process.exit(0);
 }
 
@@ -376,6 +469,7 @@ const sessions = dirs.flatMap(collectSessions).map((s) => {
 
 if (!sessions.length) {
   console.log(`No saved sessions found for ${scope}.`);
+  reportGuardLogs(guardLogs);
   process.exit(0);
 }
 
@@ -409,6 +503,8 @@ for (const s of doomed.sort((a, b) => b.bytes - a.bytes)) {
   console.log(`  ${s.id}  ${mb(s.bytes).padStart(7)} MB  ${formatAge(s.mtime).padStart(8)}  (${parts})`);
 }
 console.log(`\nTotal: ${mb(freed)} MB across ${doomed.length} session(s).`);
+
+reportGuardLogs(guardLogs);
 
 if (!apply) {
   console.log("\nDry run. Nothing has been deleted.");

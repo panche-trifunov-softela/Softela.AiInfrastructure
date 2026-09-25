@@ -41,6 +41,35 @@ function buildFakeSessionStore(agentHome, projectDirName) {
 }
 
 /**
+ * Builds a fake guard-activity log directory under a fresh agent home:
+ * `<agentHome>/.softela-ai/logs/`, holding today's log plus two older ones,
+ * mirroring what `core/lib/paths.js#guardLogPath` actually writes.
+ *
+ * @param {string} agentHome The fake agent home directory.
+ * @returns {{dir: string, todayFile: string, olderFiles: string[]}} The
+ * directory built, today's log file, and the older files that should be
+ * eligible for deletion under `--all`.
+ */
+function buildFakeGuardLogs(agentHome) {
+  const dir = path.join(agentHome, ".softela-ai", "logs");
+  fs.mkdirSync(dir, { recursive: true });
+
+  const now = new Date();
+  const two = (n) => String(n).padStart(2, "0");
+  const today = `${now.getFullYear()}-${two(now.getMonth() + 1)}-${two(now.getDate())}`;
+  const todayFile = path.join(dir, `guard-activity-${today}.jsonl`);
+  fs.writeFileSync(todayFile, '{"line": "today"}\n');
+
+  const olderFiles = ["2000-01-01", "2000-01-02"].map((date) => {
+    const file = path.join(dir, `guard-activity-${date}.jsonl`);
+    fs.writeFileSync(file, `{"line": "${date}"}\n`);
+    return file;
+  });
+
+  return { dir, todayFile, olderFiles };
+}
+
+/**
  * Runs the worker script directly as a real subprocess, against its own
  * source copy under `modules/session-cleanup/assets/` — this exercises the
  * worker's own file-handling logic in isolation, not the `softela-ai
@@ -144,6 +173,110 @@ suite("modules/session-cleanup", ({ test, eq, deepEq, ok, tmpdir, fakeHome }) =>
     const out = runCleaner([`--agent-home=${agentHome}`]);
     ok(out.includes("No sessions found"), "it must report, not throw");
     ok(out.includes("--all"), "and name the argument that widens the search");
+  });
+
+  /* --------------------------------------------- guard-activity logs, --all only */
+
+  // Guard logs are per-day and shared across every project on the host —
+  // unlike a session, there is nothing project-scoped to sweep for them, so
+  // a plain, no-flag run must neither report nor delete them. Only `--all`
+  // reaches them, and even then today's is always kept, the same guarantee
+  // the live session gets.
+
+  test("a plain run (no --all) never reports or touches guard-activity logs", () => {
+    const agentHome = tmpdir();
+    buildFakeSessionStore(agentHome, "myproject");
+    const { dir, todayFile, olderFiles } = buildFakeGuardLogs(agentHome);
+    const before = fs.readdirSync(dir).sort();
+
+    const out = runCleaner([`--agent-home=${agentHome}`]);
+    ok(!out.toLowerCase().includes("guard activity"), "a plain, per-project run must not even mention guard logs");
+
+    const after = fs.readdirSync(dir).sort();
+    deepEq(after, before, "nothing in the guard-log directory should be touched without --all");
+    ok(fs.existsSync(todayFile) && olderFiles.every((f) => fs.existsSync(f)), "sanity: nothing was deleted");
+  });
+
+  test("--all dry run reports guard-activity logs without deleting any of them", () => {
+    const agentHome = tmpdir();
+    const { todayFile, olderFiles } = buildFakeGuardLogs(agentHome);
+
+    const out = runCleaner([`--agent-home=${agentHome}`, "--all"]);
+    ok(out.includes("Guard activity logs: WOULD DELETE 2 file(s)"), `expected a WOULD DELETE line for 2 files, got:\n${out}`);
+    ok(out.includes("today's log is always kept"));
+
+    ok(fs.existsSync(todayFile), "today's log must survive a dry run");
+    for (const f of olderFiles) ok(fs.existsSync(f), "a dry run must delete nothing, guard logs included");
+  });
+
+  test("--all --apply deletes every guard-activity log except today's", () => {
+    const agentHome = tmpdir();
+    const { todayFile, olderFiles } = buildFakeGuardLogs(agentHome);
+
+    const out = runCleaner([`--agent-home=${agentHome}`, "--all", "--apply"]);
+    ok(out.includes("Guard activity logs: DELETING 2 file(s)"), `expected a DELETING line for 2 files, got:\n${out}`);
+
+    ok(fs.existsSync(todayFile), "today's guard-activity log must survive --apply, always — there is no flag that reaches it");
+    for (const f of olderFiles) ok(!fs.existsSync(f), "every other guard-activity log must be deleted");
+  });
+
+  test("a file in the log directory that does not match the guard-activity naming pattern is left alone", () => {
+    const agentHome = tmpdir();
+    const { dir } = buildFakeGuardLogs(agentHome);
+    const strayFile = path.join(dir, "not-a-guard-log.txt");
+    fs.writeFileSync(strayFile, "unrelated\n");
+    const almostMatch = path.join(dir, "guard-activity-2000-1-1.jsonl"); // not zero-padded — must not match
+    fs.writeFileSync(almostMatch, "{}\n");
+
+    runCleaner([`--agent-home=${agentHome}`, "--all", "--apply"]);
+
+    ok(fs.existsSync(strayFile), "an unrelated file must never be touched");
+    ok(fs.existsSync(almostMatch), "a half-matching name is not a guard-activity log and must survive");
+  });
+
+  test("a single --all --apply run reports and deletes sessions and guard-activity logs on separate lines", () => {
+    const agentHome = tmpdir();
+    const { projectDir, sessionA, sessionB } = buildFakeSessionStore(agentHome, "myproject");
+    const { todayFile, olderFiles } = buildFakeGuardLogs(agentHome);
+
+    const out = runCleaner([`--agent-home=${agentHome}`, "--all", `--current=${sessionA}`, "--apply"]);
+    ok(out.includes("DELETING:"), "sessions still get their own report");
+    ok(out.includes("Guard activity logs: DELETING 2 file(s)"), "guard logs get their own, separately labelled line");
+
+    ok(fs.existsSync(path.join(projectDir, `${sessionA}.jsonl`)), "the live session must still survive");
+    ok(!fs.existsSync(path.join(projectDir, `${sessionB}.jsonl`)), "the non-current session must still be deleted");
+    ok(fs.existsSync(todayFile), "today's guard log must still survive");
+    for (const f of olderFiles) ok(!fs.existsSync(f), "the older guard logs must still be deleted");
+  });
+
+  test("the memory exclusion still holds when guard-activity logs are also swept", () => {
+    const agentHome = tmpdir();
+    const { memoryDir } = buildFakeSessionStore(agentHome, "myproject");
+    buildFakeGuardLogs(agentHome);
+
+    runCleaner([`--agent-home=${agentHome}`, "--all", "--apply"]);
+
+    ok(fs.existsSync(path.join(memoryDir, "MEMORY.md")), "a memory folder must survive even once guard-log deletion is in play");
+  });
+
+  test("the hardcoded guard-log directory literal matches core/lib/paths.js#guardLogPath for the same agent home", () => {
+    const home = tmpdir();
+    const previous = process.env.SOFTELA_AI_HOME;
+    process.env.SOFTELA_AI_HOME = home;
+    try {
+      const agentHome = paths.claudeHome();
+      const expectedDir = path.dirname(paths.guardLogPath("claude", "2026-09-25"));
+      eq(expectedDir, path.join(agentHome, ".softela-ai", "logs"), "the literal clean-sessions.js hardcodes must resolve to the exact directory guardLogPath uses");
+
+      fs.mkdirSync(expectedDir, { recursive: true });
+      fs.writeFileSync(path.join(expectedDir, "guard-activity-2000-01-01.jsonl"), "{}\n");
+
+      const out = runCleaner([`--agent-home=${agentHome}`, "--all"]);
+      ok(out.includes("Guard activity logs: WOULD DELETE 1 file"), `the worker must find the log paths.js#guardLogPath would also resolve to, got:\n${out}`);
+    } finally {
+      if (previous === undefined) delete process.env.SOFTELA_AI_HOME;
+      else process.env.SOFTELA_AI_HOME = previous;
+    }
   });
 
   /* ------------------------------------------------------ codex's layout */

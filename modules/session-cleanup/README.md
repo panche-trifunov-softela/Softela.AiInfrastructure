@@ -25,7 +25,7 @@ Two arguments, and no others:
 | Flag | What it does |
 |---|---|
 | *(none)* | Sweeps the sessions nearest the work — see the layout note below. |
-| `--all` | Every session on the machine except the live one. |
+| `--all` | Every session on the machine except the live one, plus every guard-activity log on the host except today's. |
 | `--apply` | Actually delete. Without it, report only. |
 
 ## The two hosts store sessions differently
@@ -64,6 +64,26 @@ from the real stores rather than assumed.
 The live transcript is also normally locked by the host process. The tool
 reports per-item failures (`EBUSY`/`EPERM` is expected there) rather than
 claiming success for something that did not happen.
+
+## Guard-activity logs, only under `--all`
+
+One command still wipes everything: `--all` also sweeps this host's
+guard-activity logs, at `<agentHome>/.softela-ai/logs/guard-activity-<date>.jsonl`
+(one file per calendar day — see `core/lib/paths.js#guardLogPath`). They are
+shared across every project on the host, not scoped to one the way a session
+is, so a plain, no-flag run never reports or touches them — there is nothing
+project-scoped to sweep. Under `--all`, every log is eligible except today's,
+which is always kept, the same guarantee the live session gets. They are
+reported and, under `--apply`, deleted through the same dry-run/`--apply`
+machinery as sessions, but on their own labelled line, separate from the
+session report above it.
+
+Deleting an old guard log is harmless: the log writer recreates the file on
+its next append, and the guard that tallies it (`delegate-bulk-reading`) fails
+open when its own log is missing. The directory name and file-naming pattern
+are hardcoded directly in `clean-sessions.js` — matching
+`core/lib/paths.js#guardLogPath` — rather than `require`d from it, so this
+script stays dependency-free from the rest of the repository.
 
 ## How the command itself is installed
 

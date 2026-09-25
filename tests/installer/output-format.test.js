@@ -207,6 +207,65 @@ suite("installer/output-format", ({ test, eq, ok, deepEq, fakeHome, tmpdir }) =>
     });
   }
 
+  for (const width of PROBE_WIDTHS) {
+    test(`[claude] no "…" appears anywhere in the aligned plan output at width ${width}`, () => {
+      const home = fakeHome();
+      eq(runCli(home, ["install", "--agent", "claude", "--yes"]).code, 0);
+
+      const env = { SOFTELA_AI_COLUMNS: String(width) };
+      const result = runCli(home, ["update", "--agent", "claude", "--yes", "--verbose"], { env });
+      eq(result.code, 2, `update stdout:\n${result.stdout}\n${result.stderr}`);
+
+      ok(
+        !result.stdout.includes("…"),
+        `expected no ellipsis anywhere in the aligned plan output at width ${width} — an overflowing value must wrap, never be cut:\n${result.stdout}`,
+      );
+    });
+  }
+
+  for (const width of [tty.MIN_WIDTH, 60]) {
+    test(`[claude] a settings detail value too long for its column wraps at width ${width}, and every part of it survives`, () => {
+      const home = fakeHome();
+      eq(runCli(home, ["install", "--agent", "claude", "--yes"]).code, 0);
+
+      const env = { SOFTELA_AI_COLUMNS: String(width) };
+      const result = runCli(home, ["update", "--agent", "claude", "--yes", "--verbose"], { env });
+      eq(result.code, 2, `update stdout:\n${result.stdout}\n${result.stderr}`);
+
+      // The longest settings label this repository ships today — wider than
+      // its column at this width, so it is expected to wrap across more than
+      // one line. Stripping every run of whitespace (the column padding and
+      // the line breaks between wrapped chunks) and searching for the value
+      // whole confirms the wrap carried every character across, rather than
+      // dropping the part that did not fit on the first line.
+      const longestLabel = "hooks.UserPromptSubmit[agent-orchestration]";
+      const collapsed = result.stdout.replace(/\s+/g, "");
+      ok(
+        collapsed.includes(longestLabel),
+        `expected "${longestLabel}" to survive intact (wrapped, not cut) at width ${width}:\n${result.stdout}`,
+      );
+    });
+  }
+
+  test('[claude] settings columns stay aligned across rows at a width wide enough that nothing needs to wrap', () => {
+    const home = fakeHome();
+    eq(runCli(home, ["install", "--agent", "claude", "--yes"]).code, 0);
+
+    const result = runCli(home, ["update", "--agent", "claude", "--yes", "--verbose"], { env: { SOFTELA_AI_COLUMNS: "200" } });
+    eq(result.code, 2, `update stdout:\n${result.stdout}\n${result.stderr}`);
+
+    const settingsLines = result.stdout.split("\n").filter((l) => /\((enforce|seed)/.test(l));
+    ok(settingsLines.length >= 2, "expected multiple settings lines to compare alignment across");
+    const columns = settingsLines.map((l) => {
+      const i = l.indexOf("(enforce");
+      return i !== -1 ? i : l.indexOf("(seed");
+    });
+    ok(
+      columns.every((c) => c === columns[0]),
+      `expected every settings line's suffix to start at the same column, got: ${JSON.stringify(columns)}\n${result.stdout}`,
+    );
+  });
+
   test("[claude] the completion summary states what happened and names doctor and the backup directory", () => {
     const home = fakeHome();
     seedForeign(home, "claude");

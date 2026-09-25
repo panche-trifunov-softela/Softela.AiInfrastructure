@@ -11,9 +11,10 @@
  * job.
  */
 
+const fs = require("fs");
 const path = require("path");
-const { readJson } = require("../../core/lib/fs-safe");
-const { stateDir } = require("../../core/lib/paths");
+const { readJson, appendLineSafe } = require("../../core/lib/fs-safe");
+const { stateDir, guardLogPath, formatLogDate } = require("../../core/lib/paths");
 const { buildContext, makeReadFile, makeFileExists, makeStatFile, makeWithinReach, resolveFilePath } = require("../../core/lib/context");
 const engine = require("../../core/engine");
 const { severity } = require("../../core/lib/decision");
@@ -67,6 +68,159 @@ function debugLog(label, error) {
     process.stderr.write(`softela-ai dispatch: ${label}: ${error && error.message ? error.message : String(error)}\n`);
   } catch {
     // Debug logging is best-effort only.
+  }
+}
+
+/**
+ * How many days a guard-activity log file is kept before {@link pruneOldLogs}
+ * deletes it. A rolling window is enough to answer "did rule X fire this
+ * week" without the log directory growing forever.
+ */
+const GUARD_LOG_RETENTION_DAYS = 14;
+
+/** Matches a guard-activity log's own file name, whatever day it names. */
+const GUARD_LOG_FILE_RE = /^guard-activity-.*\.jsonl$/;
+
+/**
+ * How many characters of a command line the guard-activity log keeps before
+ * truncating it. This bound only shortens what lands in the log file, an
+ * agent never sees it and the decision itself is always computed from the
+ * untruncated command, but the log exists to answer "which command did a
+ * rule fire on" — and a truncated command routinely loses the very argument
+ * or path that made the rule fire, leaving the log unable to answer the
+ * question it is there for.
+ *
+ * Raised from 1200 to 20000: no guard-activity log yet exists on this
+ * machine to measure real command lengths against (a fresh install writes
+ * one on its first dispatch), so this is sized by reasoning rather than an
+ * observed sample — a heredoc, a multi-line script body, or a Codex `exec`
+ * call wrapping several nested operations can all legitimately run to many
+ * thousands of characters, and the log's only cost for keeping them whole is
+ * file size, not correctness. 20000 covers all of that whole while still
+ * keeping a real bound, so one pathological command (a multi-megabyte
+ * generated string) still cannot bloat the log file without limit.
+ */
+const GUARD_LOG_COMMAND_MAX = 20000;
+
+/** Appended to a truncated command so a reader of the log knows it was cut, not simply short. */
+const GUARD_LOG_TRUNCATION_MARKER = "…(truncated)";
+
+/**
+ * Picks the first non-empty string among candidates.
+ *
+ * A small local copy of the same tolerant-lookup pattern `core/lib/context.js`
+ * uses for reading a host payload's own field-name variance — kept here
+ * rather than imported, since `context.js` does not export it and this is
+ * the only field (a session id) this module needs to read that way.
+ *
+ * @param {...*} vals Candidate values.
+ * @returns {string | null} The first non-empty string, or `null` when none
+ * qualify.
+ */
+function firstStringOrNull(...vals) {
+  for (const v of vals) {
+    if (typeof v === "string" && v) return v;
+  }
+  return null;
+}
+
+/**
+ * Truncates a command line for the guard-activity log, so one pathological
+ * command cannot bloat the log file. The decision itself is always computed
+ * from the untruncated `ctx.command` — this only shortens what gets written
+ * to the log.
+ *
+ * @param {string} command The raw command text.
+ * @returns {string} `command` unchanged when it is at most
+ * {@link GUARD_LOG_COMMAND_MAX} characters, otherwise its first
+ * {@link GUARD_LOG_COMMAND_MAX} characters followed by
+ * {@link GUARD_LOG_TRUNCATION_MARKER}.
+ */
+function truncateForLog(command) {
+  if (command.length <= GUARD_LOG_COMMAND_MAX) return command;
+
+  return `${command.slice(0, GUARD_LOG_COMMAND_MAX)}${GUARD_LOG_TRUNCATION_MARKER}`;
+}
+
+/**
+ * Best-effort deletes guard-activity log files older than
+ * {@link GUARD_LOG_RETENTION_DAYS}, so the log directory does not grow
+ * forever. Wrapped in its own try/catch, entirely separate from the caller's
+ * own error handling: pruning is a housekeeping side effect and must never
+ * be allowed to fail a dispatch, even when deleting one particular file does.
+ *
+ * @param {string} logDir The directory holding every `guard-activity-*.jsonl`
+ * file for one agent, i.e. `path.dirname(guardLogPath(agent, anyDate))`.
+ * @returns {void}
+ */
+function pruneOldLogs(logDir) {
+  try {
+    const cutoff = Date.now() - GUARD_LOG_RETENTION_DAYS * 24 * 60 * 60 * 1000;
+    const entries = fs.readdirSync(logDir);
+
+    for (const name of entries) {
+      if (!GUARD_LOG_FILE_RE.test(name)) continue;
+      const filePath = path.join(logDir, name);
+      try {
+        if (fs.statSync(filePath).mtimeMs < cutoff) fs.unlinkSync(filePath);
+      } catch {
+        // One file's stat/unlink failing must not stop pruning the rest.
+      }
+    }
+  } catch {
+    // No log directory yet, or it could not be listed — nothing to prune.
+  }
+}
+
+/**
+ * Records one dispatch pass to this installation's guard-activity log, so
+ * "did rule X fire, on what, with what decision" becomes a lookup instead of
+ * a forensic reconstruction. Every dispatch is logged, including a plain
+ * pass with no rule at all — a log that only records denials cannot answer
+ * whether a rule was even consulted, which is the question this exists for.
+ *
+ * Covers both of `runDispatch`'s own return points — the normal success path
+ * and its outer fail-open `catch` — so a crash partway through dispatch is
+ * recorded too, not only a clean pass or a rule's own decision.
+ *
+ * Wrapped so that nothing here can change the decision already computed, or
+ * reach stdout: this is purely a side channel, bound by the same fail-open
+ * contract (CONTRACTS §7a) as the rest of dispatch. A failure surfaces only
+ * on stderr, and only under `SOFTELA_AI_DEBUG=1`, via the existing `debugLog`.
+ *
+ * @param {string} agent `"claude"` or `"codex"`.
+ * @param {object} ctx The evaluation context the decision was computed from.
+ * @param {null | {action: string, reason: string, fix?: string, ruleId: string, advisory?: boolean}} decision
+ * The engine's decision, or `null` for a plain pass.
+ * @returns {void}
+ */
+function logGuardActivity(agent, ctx, decision) {
+  try {
+    const c = ctx || {};
+    const raw = c.raw && typeof c.raw === "object" ? c.raw : {};
+    const now = new Date();
+    const logPath = guardLogPath(agent, formatLogDate(now));
+
+    const record = {
+      ts: now.toISOString(),
+      agent,
+      event: c.event || "",
+      tool: c.toolName || "",
+      action: decision ? decision.action : "pass",
+      ruleId: decision ? decision.ruleId : null,
+      advisory: decision ? decision.advisory === true : false,
+      filePath: c.filePath || null,
+      command: c.command ? truncateForLog(c.command) : null,
+      cwd: c.cwd || "",
+      sessionId: firstStringOrNull(raw.session_id, raw.sessionId),
+      agentId: c.agentId || null,
+      agentType: c.agentType || null,
+    };
+
+    appendLineSafe(logPath, JSON.stringify(record));
+    pruneOldLogs(path.dirname(logPath));
+  } catch (error) {
+    debugLog("guard-activity log failed", error);
   }
 }
 
@@ -559,7 +713,10 @@ function evaluateExecCall(ctx, source, options) {
  * `exec` calls only — an advisory note when a nested operation could not be
  * inspected but nothing else denied. Never throws — any failure surfaces as
  * a pass decision over a minimal context, per CONTRACTS §7a's fail-open
- * requirement.
+ * requirement. Every call also appends one line to this installation's
+ * guard-activity log (see {@link logGuardActivity}), on both the normal and
+ * the fail-open return path, entirely as a side effect: nothing about
+ * logging can change the decision returned here or write to stdout.
  */
 async function runDispatch(options) {
   const agent = options && options.agent === "codex" ? "codex" : "claude";
@@ -622,10 +779,13 @@ async function runDispatch(options) {
       }
     }
 
+    logGuardActivity(agent, ctx, decision);
     return { decision, ctx, advisory };
   } catch (error) {
     debugLog("dispatch failed, passing", error);
-    return { decision: null, ctx: buildContext({}, { agent }), advisory: null };
+    const fallbackCtx = buildContext({}, { agent });
+    logGuardActivity(agent, fallbackCtx, null);
+    return { decision: null, ctx: fallbackCtx, advisory: null };
   }
 }
 

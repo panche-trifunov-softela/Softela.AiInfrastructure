@@ -8,7 +8,9 @@ Code, `$clean-sessions` on Codex.
 Two arguments exist, and no others. Without any, it sweeps the sessions
 nearest the work — the current project on Claude Code, today on Codex, which
 files transcripts by date rather than by project. `--all` widens that to
-every session on the machine. `--apply` deletes instead of reporting.
+every session on the machine, and also to this host's guard-activity logs
+(every one but today's — a plain run never touches those at all). `--apply`
+deletes instead of reporting.
 
 - This is a command the developer runs deliberately, not something to invoke
   on their behalf mid-session without being asked.
