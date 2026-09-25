@@ -1086,19 +1086,38 @@ function collectWithNestedShells(statement, depth, out) {
 
 /**
  * Above this length, {@link splitStatements} skips the boundary-and-nested-
- * shell probe entirely and falls back to the cheap separator-only split.
+ * shell probe entirely and falls back to the cheap separator-only split
+ * ({@link splitOnSeparators}) — which neither peels a nested-shell wrapper
+ * (`bash -c "…"`, `powershell -Command "…"`, `eval …`) nor splits on a
+ * pipeline, background `&`, or subshell/group/substitution boundary. Once a
+ * command crosses this length, a forbidden verb hidden behind exactly one of
+ * those — `bash -c "npm install"` as one long argument, say — never becomes
+ * its own statement at all, so a rule scanning statements for that verb sees
+ * nothing to match and silently returns `pass` on a command it never
+ * actually looked inside.
  *
- * This is cheap insurance, not a fix for an observed stall: measured
- * against this repository's own code, a 300 KB command line takes the
- * nested-shell probe about 30 ms, and 20 000 quoted tokens about 17 ms — far
- * short of anything a developer would notice, let alone the "seconds to
- * tens of seconds" a cost claim might suggest. A legitimate shell
- * invocation is never megabytes of literal command text, so 256 KB is ample
- * headroom before the bound ever engages against real usage; it exists only
- * to give a pathological input a fixed, cheap ceiling instead of an
- * unbounded one.
+ * This is cheap insurance, not a fix for an observed stall. Measured
+ * directly against `splitStatements` itself (not a proxy metric): 1 MB of
+ * quoted text costs the full probe 142 ms, 4 MB costs 743 ms — both trivial
+ * next to the real `HOOK_TIMEOUT_SECONDS` budget both hosts actually enforce
+ * on every hook registration (`core/installer/plan.js`, 30 seconds). A
+ * legitimate shell invocation is essentially never hundreds of kilobytes of
+ * literal command text, but a generated or templated command line (a long
+ * inline script, a large embedded payload passed as a single argument) can
+ * legitimately run past the old 1 MB bound — and every byte past it was
+ * exactly the part of the command no rule could see. Raised fourfold, to
+ * 4 MB, so that legitimate case keeps getting the full probe.
+ *
+ * Deliberately NOT raised again to 16 MB: measured at 6.58 SECONDS — the
+ * growth from 4 MB to 16 MB is markedly superlinear (roughly 4x the input
+ * for roughly 9x the time), so the next fourfold step is worse than
+ * proportional and starts eating real fractions of the 30-second hook
+ * budget on its own. 4 MB is the point where this ceiling stops paying for
+ * itself; do not raise it again without measuring fresh, and note that a
+ * naive "it costed X ms at 4 MB, extrapolate linearly" argument does not
+ * hold here.
  */
-const MAX_COMMAND_LENGTH_FOR_UNWRAP = 256 * 1024;
+const MAX_COMMAND_LENGTH_FOR_UNWRAP = 4 * 1024 * 1024;
 
 /**
  * Splits a command line into statements on every real command boundary this

@@ -1,7 +1,7 @@
 "use strict";
 
 /**
- * Components stay behind hooks and services, never the API layer directly.
+ * Views stay behind hooks and services, never the API layer directly.
  *
  * A file under `conventions.componentFolders` importing anything under
  * `conventions.apiLayer` collapses the layering the rest of the codebase
@@ -12,10 +12,26 @@
  * alias this rule has no configuration to resolve — is matched as written.
  * A type-only form (`import type ...`, `export type { ... } from ...`)
  * carries no runtime coupling and is never flagged.
+ *
+ * A component's own hook is the exception, because it is the point of the
+ * layering rather than a way around it: `layer-boundaries.md` puts the call
+ * to the API layer in the hook, and `component-structure.md` puts the hook
+ * inside the component folder. Denying it there would deny the shape the
+ * standard asks for, leaving nowhere inside a component folder that may
+ * legitimately reach the backend.
+ *
+ * The exemption covers *consuming* the API layer, never republishing it. A
+ * `use*.ts` file whose body is `export * from ".../services/api/orders"` is
+ * a proxy rather than a hook: it would hand a view the whole API layer under
+ * a hook's name, and the view's own import — pointing at the hook rather
+ * than at the API layer — would not match `conventions.apiLayer` on the way
+ * back. That defeats the rule at both hops, so a re-export of the API layer
+ * is denied whatever the file is called.
  */
 
 const path = require("path");
 const { deny, pass } = require("../lib/decision");
+const { isHookFileName } = require("../lib/naming-patterns");
 const { globToRegex } = require("../lib/project-resolver");
 const { relativeToRepo } = require("../lib/repo-path");
 
@@ -109,16 +125,21 @@ const neverTypeOnly = () => false;
  * module specifier as a quoted string, each with the specifier captured in
  * group 1, paired with a check for whether that particular form is
  * type-only and therefore carries no runtime coupling.
+ *
+ * `reexport` marks the one form that republishes what it names instead of
+ * consuming it. A hook may consume the API layer; nothing may hand it on
+ * under another name, so the two are tracked apart.
  */
 const SPECIFIER_PATTERNS = [
-  { re: /\bimport\s+["']([^"']+)["']/g, typeOnly: neverTypeOnly },
-  { re: /\bimport\s+[^;'"()]*?\bfrom\s+["']([^"']+)["']/g, typeOnly: isTypeOnlyImport },
+  { re: /\bimport\s+["']([^"']+)["']/g, typeOnly: neverTypeOnly, reexport: false },
+  { re: /\bimport\s+[^;'"()]*?\bfrom\s+["']([^"']+)["']/g, typeOnly: isTypeOnlyImport, reexport: false },
   {
     re: /\bexport\s+(?:type\s+)?(?:\*(?:\s+as\s+[A-Za-z_$][\w$]*)?|\{[^}]*\})\s+from\s+["']([^"']+)["']/g,
     typeOnly: isTypeOnlyExport,
+    reexport: true,
   },
-  { re: /\brequire\s*\(\s*["']([^"']+)["']\s*\)/g, typeOnly: neverTypeOnly },
-  { re: /\bimport\s*\(\s*["']([^"']+)["']\s*\)/g, typeOnly: neverTypeOnly },
+  { re: /\brequire\s*\(\s*["']([^"']+)["']\s*\)/g, typeOnly: neverTypeOnly, reexport: false },
+  { re: /\bimport\s*\(\s*["']([^"']+)["']\s*\)/g, typeOnly: neverTypeOnly, reexport: false },
 ];
 
 /**
@@ -128,15 +149,17 @@ const SPECIFIER_PATTERNS = [
  * layering violation.
  *
  * @param {string} src Content already passed through `stripComments`.
- * @returns {string[]} The specifier strings, in order, duplicates included.
+ * @returns {Array<{specifier: string, reexport: boolean}>} Each specifier in
+ * order, duplicates included, carrying whether the form that named it
+ * republishes the module rather than consuming it.
  */
 function extractSpecifiers(src) {
   const found = [];
-  for (const { re, typeOnly } of SPECIFIER_PATTERNS) {
+  for (const { re, typeOnly, reexport } of SPECIFIER_PATTERNS) {
     re.lastIndex = 0;
     let m = re.exec(src);
     while (m !== null) {
-      if (!typeOnly(m[0])) found.push(m[1]);
+      if (!typeOnly(m[0])) found.push({ specifier: m[1], reexport });
       m = re.exec(src);
     }
   }
@@ -177,7 +200,7 @@ module.exports = {
   id: "api-import-boundary",
 
   /** one line, shown by `softela-ai doctor` */
-  title: "Components may not import the API layer directly",
+  title: "A view may not import the API layer; a component's hook may",
 
   /** which host events this rule can fire on */
   events: ["PreToolUse"],
@@ -235,15 +258,28 @@ module.exports = {
     const pathAliases =
       conventions.pathAliases && typeof conventions.pathAliases === "object" ? conventions.pathAliases : null;
 
+    const isHook = isHookFileName(path.posix.basename(rel));
+
     const specifiers = extractSpecifiers(stripComments(content));
-    for (const specifier of specifiers) {
+    for (const { specifier, reexport } of specifiers) {
       const target = resolveSpecifier(rel, specifier, pathAliases);
-      if (apiRe.test(target)) {
+      if (!apiRe.test(target)) continue;
+
+      // The hook is where the call to the API layer belongs, so consuming it
+      // there is the standard being followed rather than broken.
+      if (isHook && !reexport) continue;
+
+      if (reexport) {
         return deny(
-          "Components may not import the API layer directly; they should go through a hook or service that sits between them.",
-          `Route through a hook or service instead of importing "${specifier}" from a component.`,
+          "Re-exporting the API layer from inside a component folder hands it on under another name, which puts it back within reach of the view.",
+          `Call "${specifier}" from a hook and export what the view actually needs, rather than re-exporting the module itself.`,
         );
       }
+
+      return deny(
+        "A view may not import the API layer directly; it should go through a hook or service that sits between them.",
+        `Move the call to "${specifier}" into this component's own hook, and have the view use that hook.`,
+      );
     }
     return pass();
   },

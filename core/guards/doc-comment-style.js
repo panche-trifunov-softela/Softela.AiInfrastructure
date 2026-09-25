@@ -3,13 +3,14 @@
 /**
  * Enforces the house documentation style on newly written comment text.
  *
- * Judges written documentation by a fixed rule: a block that is a list
- * (bullets, numbered steps, or `@`-tags) passes at any length, and only a
- * prose-only block past the line threshold asks. The judgement runs through
- * the shared rule contract instead of being embedded in a single tool, and
- * accepts the same context for both `Write` (the full new file) and `Edit`
- * (only the replacement text), so nothing here needs to know which tool
- * produced the written content.
+ * Judges written documentation by a fixed rule: a bullet, a numbered step or
+ * an `@`-tag passes at any length, and only a run of unbroken prose past the
+ * line threshold asks — whether or not the block around it also carries
+ * structure elsewhere. The judgement runs through the shared rule contract
+ * instead of being embedded in a single tool, and accepts the same context
+ * for both `Write` (the full new file) and `Edit` (only the replacement
+ * text), so nothing here needs to know which tool produced the written
+ * content.
  */
 
 const { deny, ask, pass } = require("../lib/decision");
@@ -114,23 +115,33 @@ const CONSTRUCTOR_SIGNATURE = /(?:(?:public|private|protected|internal|static)\s
 
 /**
  * A ticket-id `#` is anchored to where a real reference actually sits: the
- * start of the text, whitespace, or an opening bracket. Without that anchor
- * the digits inside a URL fragment (`Section#1990s`) read as a ticket too.
+ * start of the text, whitespace, or an opening bracket, optionally followed
+ * by a short one-to-three-letter prefix — the Azure Boards spelling
+ * `AB#31921` carries the same reference as bare `#31921`. Without the anchor
+ * the digits inside a URL fragment (`Section#1990s`) read as a ticket too;
+ * the letter-count cap on the prefix is what keeps a longer word right
+ * before a `#` (`Section#1990`) from reading as one.
  */
-const TICKET_ANCHOR_SOURCE = "(^|[\\s(])#(\\d{3,})\\b";
+const TICKET_ANCHOR_SOURCE = "(^|[\\s(])([A-Za-z]{0,3})#(\\d{3,})\\b";
 
 /**
- * Matches the branch-name spelling of the same reference — `task_12345`,
- * `TASK-12345` — which carries a ticket id just as surely as `#12345` does,
- * and goes just as dead when the tracker changes.
+ * Matches the word spelling of the same reference, however a person actually
+ * writes it — `task_12345`, `TASK-12345`, `Task 12345`, `ticket 12345`,
+ * `issue 12345`, `story#12345`, `bug: 12345` — which carries a ticket id just
+ * as surely as `#12345` does, and goes just as dead when the tracker changes.
+ * The separator between the word and the digits is optional and at most two
+ * characters drawn from whitespace, `_`, `-`, `#` and `:`, and at least three
+ * digits are required so an unrelated short number (`task 30`) does not
+ * match.
  */
-const TICKET_WORD = /\btask[_-]\d{3,}\b/i;
+const TICKET_WORD = /\b(?:task|ticket|issue|story|bug)[\s_#:-]{0,2}\d{3,}\b/i;
 
 /**
- * Checks whether the text contains a ticket id, in either the `#12345` or
- * the `task_12345` spelling, excluding a `#` run that is exactly 3, 4, 6 or
- * 8 hex characters long — the standard CSS hex-color lengths — since that
- * shape reads as a color literal, not a reference.
+ * Checks whether the text contains a ticket id, in either the `#12345` /
+ * `AB#12345` spelling or a word spelling such as `task_12345` or
+ * `ticket 12345`, excluding a `#` run that is exactly 3, 4, 6 or 8 hex
+ * characters long — the standard CSS hex-color lengths — since that shape
+ * reads as a color literal, not a reference.
  *
  * @param {string} text The written content.
  * @returns {boolean} `true` when a genuine ticket id is present.
@@ -140,7 +151,7 @@ function hasTicketId(text) {
   const re = new RegExp(TICKET_ANCHOR_SOURCE, "gm");
   let m;
   while ((m = re.exec(text))) {
-    const hashIndex = m.index + m[1].length;
+    const hashIndex = m.index + m[1].length + m[2].length;
     const hexRun = /^[0-9a-fA-F]*/.exec(text.slice(hashIndex + 1))[0];
     const isHexColor = hexRun.length === 3 || hexRun.length === 4 || hexRun.length === 6 || hexRun.length === 8;
     if (!isHexColor) return true;
@@ -163,14 +174,64 @@ function isStructuredLine(line) {
 }
 
 /**
- * Finds the first `/** ... *\/` block whose content is prose-only and longer
- * than the line backstop.
+ * Checks whether a line is blank once its JSDoc ` * ` prefix is stripped.
+ *
+ * @param {string} line One line of a comment block.
+ * @returns {boolean} `true` when the line carries no content beyond the
+ * comment-continuation prefix.
+ */
+function isBlankCommentLine(line) {
+  return line.replace(/^\s*\*?\s*/, "") === "";
+}
+
+/**
+ * Finds the longest run of consecutive prose lines strictly inside a
+ * `/** ... *\/` block, i.e. excluding the block's own opening and closing
+ * delimiter lines.
+ *
+ * A run is a maximal stretch of lines that are neither blank
+ * (`{@link isBlankCommentLine}`) nor structured (`{@link isStructuredLine}`):
+ * a bullet, a numbered step, or an `@`-tag. Either kind of line ends the
+ * current run without joining it, so two short paragraphs separated by a
+ * blank line, or a paragraph followed by a tag, are each judged on their own
+ * length rather than combined into one.
+ *
+ * @param {string[]} block The block's lines, from the opening `/**` line to
+ * the closing `*\/` line, inclusive.
+ * @returns {number} The longest prose run found, `0` when the block has none.
+ */
+function longestProseRun(block) {
+  let run = 0;
+  let longest = 0;
+  for (let i = 1; i < block.length - 1; i++) {
+    const line = block[i];
+    if (isBlankCommentLine(line) || isStructuredLine(line)) {
+      run = 0;
+      continue;
+    }
+    run++;
+    if (run > longest) longest = run;
+  }
+  return longest;
+}
+
+/**
+ * Finds the first `/** ... *\/` block whose longest unbroken prose run is
+ * longer than the line backstop.
+ *
+ * The documentation standard requires an `@param`/`@returns` tag on every
+ * documented member, so a tag appearing somewhere in a block can no longer be
+ * read as proof the whole block is structured — a block can legitimately
+ * carry both a tag and a run of prose long enough to have been a list. The
+ * ceiling is therefore judged against the longest continuous prose run inside
+ * the block (`{@link longestProseRun}`), not against the block's total length
+ * or whether it contains a tag anywhere at all.
  *
  * @param {string[]} lines The written text, split into lines.
- * @param {number} maxBlockLines The line count past which a prose-only block
- * asks; the caller resolves this from project config or the module default.
- * @returns {number} The offending block's line count, or `0` when every block
- * is short enough or carries list structure.
+ * @param {number} maxBlockLines The run length past which a block asks; the
+ * caller resolves this from project config or the module default.
+ * @returns {number} The offending run's line count, or `0` when every block's
+ * longest run is short enough.
  */
 function firstOversizedProseBlock(lines, maxBlockLines) {
   let blockStart = -1;
@@ -178,7 +239,8 @@ function firstOversizedProseBlock(lines, maxBlockLines) {
     if (blockStart === -1 && /\/\*/.test(lines[i])) blockStart = i;
     if (blockStart !== -1 && /\*\//.test(lines[i])) {
       const block = lines.slice(blockStart, i + 1);
-      if (block.length > maxBlockLines && !block.some(isStructuredLine)) return block.length;
+      const run = longestProseRun(block);
+      if (run > maxBlockLines) return run;
       blockStart = -1;
     }
   }
@@ -391,7 +453,7 @@ module.exports = {
     const blockLines = firstOversizedProseBlock(lines, blockLimit);
     if (blockLines > 0) {
       return ask(
-        `DOC RULE: a ${blockLines}-line comment block with no @-tags and no list. ` +
+        `DOC RULE: a ${blockLines}-line run of unbroken prose inside a comment block. ` +
           "Length is fine when it is structured; narrative that is really an enumeration is not.",
         "Restructure it into bullets, numbered steps or @-tags, or confirm this is one continuous explanation.",
       );

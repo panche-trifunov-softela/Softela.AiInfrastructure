@@ -254,9 +254,9 @@ suite("guards/reuse-before-new", ({ test, eq, tmpdir }) => {
     const repoRoot = tmpdir();
     const dir = path.join(repoRoot, "src", "many");
     fs.mkdirSync(dir, { recursive: true });
-    // One more file than the 6000-file default bound, so the combined scan
+    // One more file than the 24000-file default bound, so the combined scan
     // (across the loop's files plus the decoy below) is over budget.
-    for (let i = 0; i < 6001; i++) fs.writeFileSync(path.join(dir, `f${i}.ts`), "");
+    for (let i = 0; i < 24001; i++) fs.writeFileSync(path.join(dir, `f${i}.ts`), "");
     fs.writeFileSync(path.join(dir, "useFetchData.ts"), "");
     eq(
       decide(rule, {
@@ -275,7 +275,7 @@ suite("guards/reuse-before-new", ({ test, eq, tmpdir }) => {
     const dir = path.join(repoRoot, "src", "many");
     fs.mkdirSync(dir, { recursive: true });
     // Only a handful of files, but the configured bound is smaller still, so
-    // the scan must be judged incomplete well below the 6000 default.
+    // the scan must be judged incomplete well below the 24000 default.
     for (let i = 0; i < 5; i++) fs.writeFileSync(path.join(dir, `f${i}.ts`), "");
     fs.writeFileSync(path.join(dir, "useFetchData.ts"), "");
     eq(
@@ -530,6 +530,23 @@ suite("guards/reuse-before-new", ({ test, eq, tmpdir }) => {
         toolName: "Write",
         filePath: path.join(repoRoot, "src", "Other", "Foo.cs"),
         content: "public class Foo {}",
+        git: { repoRoot },
+        project: PROJECT_BACKEND,
+      }),
+      "ask",
+    );
+  });
+
+  test("matches a new C# public enum against an existing same-named .cs file", () => {
+    const repoRoot = tmpdir();
+    const dir = path.join(repoRoot, "src", "Services");
+    fs.mkdirSync(dir, { recursive: true });
+    fs.writeFileSync(path.join(dir, "OrderStatus.cs"), "// placeholder\n");
+    eq(
+      decide(rule, {
+        toolName: "Write",
+        filePath: path.join(repoRoot, "src", "Other", "OrderStatus.cs"),
+        content: "public enum OrderStatus {}",
         git: { repoRoot },
         project: PROJECT_BACKEND,
       }),

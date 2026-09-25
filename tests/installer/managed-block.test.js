@@ -66,6 +66,52 @@ suite("installer/managed-block", ({ test, eq, ok, throws }) => {
     eq(result.content, before);
   });
 
+  test("removeBlock handles a block larger than 200KB without throwing", () => {
+    // Regression test for the defect where removeBlock compiled the whole
+    // block text into a RegExp purely to trim the whitespace around it — a
+    // pattern that large exceeds the engine's own size limit and throws.
+    const line = "This line stands in for one verbatim standards paragraph repeated many times.\n";
+    let largeBody = "";
+    while (largeBody.length < 200 * 1024) {
+      largeBody += line;
+    }
+    const before = `before\n\n${mb.BEGIN}\n\n${largeBody}\n${mb.END}\n\nafter\n`;
+    const result = mb.removeBlock(before);
+    ok(result.changed);
+    ok(!result.content.includes(mb.BEGIN));
+    ok(!result.content.includes(mb.END));
+    ok(result.content.includes("before"));
+    ok(result.content.includes("after"));
+  });
+
+  test("removeBlock trims a preceding newline plus a run of spaces immediately before the block", () => {
+    const before = `before\n    ${mb.BEGIN}\n\nbody\n\n${mb.END}\nafter\n`;
+    const result = mb.removeBlock(before);
+    ok(result.changed);
+    eq(result.content, "before\nafter\n");
+  });
+
+  test("removeBlock trims spaces preceding the block when no newline comes before them", () => {
+    const before = `    ${mb.BEGIN}\n\nbody\n\n${mb.END}\nafter\n`;
+    const result = mb.removeBlock(before);
+    ok(result.changed);
+    eq(result.content, "\nafter\n");
+  });
+
+  test("removeBlock handles a block at the very start of the file", () => {
+    const before = `${mb.BEGIN}\n\nbody\n\n${mb.END}\nafter\n`;
+    const result = mb.removeBlock(before);
+    ok(result.changed);
+    eq(result.content, "\nafter\n");
+  });
+
+  test("removeBlock handles a block at the very end of the file with no trailing newline", () => {
+    const before = `before\n\n${mb.BEGIN}\n\nbody\n\n${mb.END}`;
+    const result = mb.removeBlock(before);
+    ok(result.changed);
+    eq(result.content, "before\n\n");
+  });
+
   test("extractBody returns the trimmed inner text of a marked template", () => {
     const template = `${mb.BEGIN}\n\n  inner text  \n\n${mb.END}\n`;
     eq(mb.extractBody(template), "inner text");

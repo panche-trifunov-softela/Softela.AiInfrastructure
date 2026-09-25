@@ -66,6 +66,8 @@ const AGENT_RESULT_KEYS = [
   "empty",
   "applied",
   "unknownModules",
+  "newlyEnabledModules",
+  "requiresBlockedModules",
   "home",
   "codexTrustCaveat",
   "areaWarnings",

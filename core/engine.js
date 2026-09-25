@@ -319,8 +319,11 @@ function applicableRules(ctx, options = {}) {
  * 9. Keep the most severe surviving result; ties are broken by registry
  *    order, so the earliest-registered rule wins.
  * 10. Mark the kept result `advisory: true` when it is an `ask` that is a
- *    NUDGE rather than a request for the developer's decision — either the
- *    rule declares `advisoryAsk`, or step 7 has just reframed its reason as
+ *    NUDGE rather than a request for the developer's decision — the rule
+ *    declares `advisoryAsk`, the rule's own `evaluate` result carries
+ *    `advisory: true` (a per-call value a rule with more than one code path
+ *    can set for itself, e.g. a rule that judges different kinds of matches
+ *    with different confidence), or step 7 has just reframed its reason as
  *    advice. Every adapter emits a nudge as advice the call proceeds
  *    through — the agent reads it as context and the developer sees it as a
  *    system message, never a permission prompt — because even on a host with
@@ -417,7 +420,7 @@ function evaluate(ctx, options = {}) {
      * strengthened, only softened, and only when the target file's
      * pre-existence was actually established.
      */
-    let advisory = rule.advisoryAsk === true;
+    let advisory = rule.advisoryAsk === true || result.advisory === true;
     if (!rule.mandatory && rule.newCodeOnly === true && changeScope === "existing") {
       action = clamp(action, "ask");
       reason = `${NEW_CODE_ONLY_ADVICE_PREFIX}\n\n${reason}`;

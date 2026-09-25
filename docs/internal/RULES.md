@@ -370,13 +370,94 @@ restricting the hook to the TypeScript pair meant the rule could not fire at
 all on a JavaScript project, whose shared-hooks root fills up the same way.
 
 ### `colocated-tests` · deny · `stacks: ["frontend"]` · `requiresConfig: ["conventions.testFolder"]`
-A test file must sit in a `__tests__` directory (`conventions.testFolder`)
-inside the folder of the component it covers, not in a distant test tree, and
-not in the parent's `__tests__` when the subject is a nested child component.
+A test file must sit in a `__tests__` directory (`conventions.testFolder`),
+not loose beside the file it covers. *Which* `__tests__` it has to be is
+checked only for a subject that has a folder of its own; read the limits at the
+end of this entry before assuming this keeps a spec out of a distant test tree.
+
+*Which* `__tests__` depends on what the subject is, because a component folder
+owns two different kinds of thing and `testing.md` places their specs
+differently. A **component** is tested from its own folder's `__tests__`, so a
+nested child's spec sitting in an ancestor's `__tests__` is a denial — that is
+the misplacement this rule exists for. Everything else the folder owns — its
+hook, its context, its utilities — has no folder of its own and is tested from
+the owning component's `__tests__`, exactly as the standard's `OrderPanel`
+example puts `useOrderPanel.test.ts` and `canEditOrder.test.ts` there. The two
+are told apart by name through `core/lib/naming-patterns.js`, the same source
+`naming-standards` reads: PascalCase is a component, camelCase is not.
+
+**A context is the exception in between.** `naming.md` spells it `PascalCase` +
+`Context`, so the PascalCase test alone reads it as a component and demands a
+folder of its own — but `component-structure.md` gives a context no folder at
+all: one sits in the component folder beside the view, several sit together in
+`contexts/`. Both legal placements would be denied, and the fix would name a
+folder the standard never creates. `naming-patterns.js` therefore carries the
+context shape too, and this rule treats a context as one of the modules the
+folder owns.
+
+**PascalCase is not only components, so the folder demand is scoped to
+`conventions.componentFolders`.** Types, enums and classes are PascalCase as
+well, and `src/types/__tests__/OrderStatus.test.ts` is a spec nobody should be
+told to move into an `OrderStatus/` folder. Outside the declared component
+tree, a PascalCase subject is not assumed to own a folder. This convention is
+read but never gates the rule, the same way `api-import-boundary` reads
+`conventions.pathAliases`: a project that declares no component folders gets
+the check everywhere, which is the behaviour that stood before the convention
+was consulted.
+
+The folder comparison is case-insensitive. A component predating the
+PascalCase folder convention (`dtEditor/DtEditor.tsx`) would otherwise be
+refused a test until its folder was renamed, and gating a test on legacy
+folder casing is `naming-standards`' business, not this rule's.
+
+**The folder demand is checked against the filesystem, not assumed from the
+name.** A PascalCase subject inside the component tree is only *presumed* to
+own a folder; before the rule acts on that presumption it probes for the
+subject's own module file through `ctx.statFile`. The candidate directory
+comes from the spec's own relative import of the subject — the spec's content
+says exactly where it looked — falling back to the literal, glob-free prefix
+of `conventions.componentFolders` when no such import is found. Where more
+than one import resolves to the subject's own name, the one inside
+`conventions.componentFolders` wins, so a same-named mock or fixture cannot
+send the probe to the wrong directory. Finding
+`<dir>/<Subject>/<Subject>.<ext>` confirms the presumption; finding only
+`<dir>/<Subject>.<ext>` overturns it, because the component is still a single
+flat file and cannot be asked to keep its spec in a folder it does not have.
+Establishing neither leaves the presumption exactly as it was.
+
+**Every probed path is absolute, anchored on the repository root.**
+`ctx.statFile` resolves a relative path against `ctx.cwd`, and `ctx.cwd` is
+not the repository root — `workdir.js#resolveWorkdir` prefers the write's own
+nearest existing ancestor directory, which for a spec file is that spec's own
+directory. A repo-relative path handed straight to `ctx.statFile` therefore
+asks about a location nested under the spec itself, finds nothing, and
+silently stops loosening anything, which is exactly how this probe first
+shipped. The anchor is `ctx.git.repoRoot`, falling back to `ctx.cwd` — the
+same one `relativePath` uses to derive the path being judged — and
+`ctx.statFile` sandboxes an absolute path to that same boundary, so nothing
+about what the probe may read changes. A guard test alone does not catch a
+regression here: the fixture reader in `tests/guards/_ctx.js` matches its own
+keys before resolving anything, so the pinning case sets `cwd` to a genuine
+subdirectory of `repoRoot`.
+
+The probe obeys CONTRACTS.md §3: bounded to one candidate directory across a
+fixed extension list, never a directory listing, and one-directional — it can
+only weaken the decision, so a failed or sandbox-refused `statFile` leaves the
+rule as strict as it was without it. `testing.md` states the resulting
+standard: the demand for colocation arrives with the folder, on a new
+component or on one being refactored into folder shape.
+
+**The limits of a lexical check.** One placement still passes that a wider
+lookup would catch: a spec sitting in the `__tests__` of a component that does
+not own it. A subject with no folder of its own — a hook, a context, a
+utility — is likewise accepted in *any* folder named `__tests__`. What the rule
+does catch is a spec with no `__tests__` folder at all, and a nested child
+component tested from an ancestor's `__tests__` — the misplacement it exists
+for, which neither gap touches.
 
 Same reasoning as `component-folder-shape`, raised from `ask` for the same
-incident: a deterministic path check with only one violation shape, and a
-fix that always names the corrected path.
+incident: a deterministic path check and a fix that always names the
+corrected path.
 
 ### `barrel-exports-only` · deny · `stacks: ["frontend"]` · `requiresConfig: ["conventions.componentFolders"]`
 A barrel `index` file inside a component folder may contain only imports,
@@ -420,11 +501,17 @@ contain the target, the longest wins, so `@components/Common/Table` is
 preferred over `@/components/Common/Table`.
 
 ### `api-import-boundary` · deny · `stacks: ["frontend"]` · `requiresConfig: ["conventions.componentFolders", "conventions.apiLayer"]`
-A file under `conventions.componentFolders` may not import from
-`conventions.apiLayer` directly. Components talk to hooks and services; the
-network layer stays behind them. A relative specifier's alias resolution reads
-`conventions.pathAliases` when the project declares it, but that key is
-optional and never gates the rule itself.
+A view under `conventions.componentFolders` may not import from
+`conventions.apiLayer` directly. Views talk to hooks and services; the network
+layer stays behind them. A component's own hook is exempt, because the hook is
+where that import belongs (`docs/standards/layer-boundaries.md`). A hook is
+recognised by file name (`core/lib/naming-patterns.js#isHookFileName`): `use`,
+a capital letter, then `.ts`, `.tsx`, `.js` or `.jsx`, so `usedFieldsPanel.tsx`
+is still a view. A hook that re-exports the API layer (`export * from …` or
+`export { x } from …`) is still denied, since that hands the whole network
+layer to the view under the hook's name. A relative specifier's alias
+resolution reads `conventions.pathAliases` when the project declares it, but
+that key is optional and never gates the rule itself.
 
 ### `no-explicit-any` · deny, ratcheted · `stacks: ["frontend"]` · `requiresConfig: ["conventions.contractTypes"]`
 `: any`, `<any>`, `as any` and `any[]` in a file under
@@ -567,25 +654,35 @@ directory, so it lives in that repository's globs.
   in) — that is `protected-paths`' job, and is deliberately not duplicated
 
 ### `doc-comment-style` · deny / ask
-Enforces the house documentation style on newly written text: judges doc
-blocks by their structure (bullets, numbered steps, tags pass at any length;
-prose-only blocks ask if they exceed a configurable line threshold) and checks
-for ticket ids and obsolete tags anywhere in the written content.
+Enforces the house documentation style on newly written text: judges a doc
+block by the longest unbroken run of prose inside it — a blank line, a
+bullet, a numbered step and an `@`-tag each end a run rather than extending
+it, so a block that carries both a tag and a long paragraph is judged on
+that paragraph alone rather than exempted for carrying a tag elsewhere —
+and checks for ticket ids and obsolete tags anywhere in the written content.
 
 | Case | Action |
 |---|---|
 | `@example` in a doc block | deny |
 | a `/** … */` block in a `.cs` file | deny |
-| a prose-only doc block longer than 18 lines | ask |
+| a run of more than 18 consecutive lines inside a block that are neither blank, a bullet, a numbered step, nor an `@`-tag | ask |
 | more than 6 consecutive `//` lines (a `///` line is not one of them) | ask |
-| a ticket id anywhere in the written content, as `#12345` or `task_12345` | deny |
+| a ticket id anywhere in the written content | deny |
 
-The last row is new and deliberate: a ticket number in a source file is a dead
-reference the moment the tracker changes, and it is the one documentation defect
-that survives review because it looks like context.
+The ticket-id row matches three shapes: a bare `#` followed by three or more
+digits; the same anchored with a one-to-three-letter prefix immediately
+before the `#`, the Azure Boards spelling; and a word spelling of
+`task`/`ticket`/`issue`/`story`/`bug`, followed by an optional separator of
+up to two characters drawn from whitespace, `_`, `-`, `#` and `:`, then three
+or more digits. A `#` run that is exactly 3, 4, 6 or 8 hex characters long is
+read as a CSS colour literal instead of a reference and does not match. This
+row is deliberate: a ticket number in a source file is a dead reference the
+moment the tracker changes, and it is the one documentation defect that
+survives review because it looks like context.
 
-Passes: a long block that is a **list** (bullets, numbered steps, or `@`-tags),
-`/// <summary>` in `.cs`, a short block, a Markdown file.
+Passes: a block whose every line is blank, a bullet, a numbered step or an
+`@`-tag, however long the block itself runs; `/// <summary>` in `.cs`; a short
+prose run even inside a block that also carries a tag; a Markdown file.
 
 The `///` carve-out is load-bearing, not a detail. A `///` line opens with
 `//`, so the run counter used to include it, and a C# member documented
@@ -620,8 +717,10 @@ with a source extension are compared (`.cs .ts .tsx .js .jsx .mjs .cjs .vue
 otherwise both), build-output directories are skipped (`bin`, `obj`, `dist`,
 `build`, `out`, `target`, `coverage`, `packages`, `TestResults`, `.vs`,
 `.idea`, `.next`, `.turbo`, `.venv`, `__pycache__`, `vendor`), and the total
-is capped at 6000 files by default — comfortably above the largest measured
-real repository, at 3557 source files — overridable per project
+is capped at 24000 files by default — the largest repository measured held
+3557 source files once build output was excluded, comfortably under the old
+6000 bound already, but the cap was raised fourfold anyway because hitting it
+does not shrink the check, it silences it — overridable per project
 with `reuseBeforeNew.maxScanFiles`. Results are cached per process, keyed by
 the roots, the extension filter and the bound together. If the scan cannot
 complete within the bound it passes, because "reuse" is a judgement and this

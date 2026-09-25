@@ -23,11 +23,18 @@ const { globToRegex } = require("../lib/project-resolver");
  * Default files considered, in total across every source root scanned.
  *
  * Measured against the real repositories under active use: the largest of
- * them held 3557 source files once build output was excluded. 6000 stays
- * comfortably above that while still being a real bound — a project can raise
- * or lower it with `reuseBeforeNew.maxScanFiles`.
+ * them held 3557 source files once build output was excluded — comfortably
+ * under the old 6000 bound already. Raised to 24000 anyway, fourfold,
+ * because hitting this cap does not degrade the check, it silences it: past
+ * the limit `scanFiles` reports the whole scan incomplete and `evaluate`
+ * passes without saying why, so an agent working in a repository this large
+ * is told "nothing similar found" when a near-duplicate genuinely exists —
+ * the exact failure this rule exists to prevent. A wider bound costs walk
+ * time on a large tree; that cost is deliberate and worth paying so the
+ * guard keeps looking instead of going quiet. A project can still raise or
+ * lower it with `reuseBeforeNew.maxScanFiles`.
  */
-const MAX_SCAN_FILES = 6000;
+const MAX_SCAN_FILES = 24000;
 
 /**
  * Directory names skipped everywhere this rule scans, on top of the walker's
@@ -366,7 +373,7 @@ function extractExportedNames(content) {
     /\bexport\s+interface\s+([A-Za-z_$][\w$]*)/g,
     /\bexport\s+type\s+([A-Za-z_$][\w$]*)/g,
     /\bexport\s+const\s+([A-Za-z_$][\w$]*)/g,
-    /\bpublic\s+(?:static\s+)?(?:class|interface|struct|record)\s+([A-Za-z_][\w]*)/g,
+    /\bpublic\s+(?:static\s+)?(?:class|interface|struct|record|enum)\s+([A-Za-z_][\w]*)/g,
   ];
   for (const re of patterns) {
     let m;

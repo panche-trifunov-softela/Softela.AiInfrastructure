@@ -4,7 +4,7 @@ const fs = require("fs");
 const path = require("path");
 
 const { suite } = require("../harness");
-const { buildContext, makeReadFile, makeFileExists } = require("../../core/lib/context");
+const { buildContext, makeReadFile, makeFileExists, makeStatFile } = require("../../core/lib/context");
 
 suite("lib/context", ({ test, eq, ok, deepEq, tmpdir, fixture }) => {
   /**
@@ -337,6 +337,67 @@ suite("lib/context", ({ test, eq, ok, deepEq, tmpdir, fixture }) => {
 
     const readFile = makeReadFile(linkedRoot, { repoRoot: linkedRoot });
     eq(readFile("a.ts"), "export const a = 1;\n");
+  });
+
+  /* -------------------------------------------------------- makeStatFile */
+
+  test("makeStatFile answers an ordinary file's real byte size without reading its content", () => {
+    const dir = tmpdir();
+    const content = "export const a = 1;\n";
+    fs.writeFileSync(path.join(dir, "a.ts"), content, "utf8");
+    const statFile = makeStatFile(dir, { repoRoot: dir });
+    eq(statFile("a.ts"), Buffer.byteLength(content, "utf8"));
+  });
+
+  test("makeStatFile answers null, not a throw, for a file that is not there", () => {
+    const dir = tmpdir();
+    const statFile = makeStatFile(dir, { repoRoot: dir });
+    eq(statFile("missing.ts"), null);
+  });
+
+  test("makeStatFile answers null for a directory — mirrors makeReadFile's own EISDIR failure, not makeFileExists' true", () => {
+    const dir = tmpdir();
+    fs.mkdirSync(path.join(dir, "not-a-file"));
+    const statFile = makeStatFile(dir, { repoRoot: dir });
+    eq(statFile("not-a-file"), null);
+  });
+
+  test("makeStatFile refuses a path that textually escapes the boundary", () => {
+    const dir = tmpdir();
+    const outside = tmpdir();
+    fs.writeFileSync(path.join(outside, "secret.ts"), "secret content that must stay unseen", "utf8");
+    const statFile = makeStatFile(dir, { repoRoot: dir });
+    eq(statFile(path.join(outside, "secret.ts")), null);
+  });
+
+  test("makeStatFile refuses a directory junction inside the boundary that resolves outside it", () => {
+    const dir = tmpdir();
+    const outside = tmpdir();
+    fs.writeFileSync(path.join(outside, "secret.ts"), "export const secret = 1;\n", "utf8");
+    fs.symlinkSync(outside, path.join(dir, "linkdir"), "junction");
+
+    const statFile = makeStatFile(dir, { repoRoot: dir });
+    eq(statFile("linkdir/secret.ts"), null);
+  });
+
+  test("makeStatFile never throws on a garbage path", () => {
+    const dir = tmpdir();
+    const statFile = makeStatFile(dir, { repoRoot: dir });
+    let threw = false;
+    try {
+      eq(statFile(""), null);
+      eq(statFile(null), null);
+      eq(statFile(undefined), null);
+    } catch {
+      threw = true;
+    }
+    eq(threw, false);
+  });
+
+  test("buildContext exposes ctx.statFile, anchored the same way ctx.readFile is", () => {
+    const ctx = build({ tool_name: "Bash" });
+    ok(typeof ctx.statFile === "function", "ctx.statFile must be a function");
+    eq(ctx.statFile("missing.ts"), null);
   });
 
   /* ------------------------------------------------------------- frozen */

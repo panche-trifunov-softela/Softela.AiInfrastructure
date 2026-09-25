@@ -454,4 +454,30 @@ suite("guards/hook-locality", ({ test, eq, tmpdir }) => {
       "pass",
     );
   });
+
+  // --- per-process scan cache -------------------------------------------------
+
+  test("a second scan of the same source roots in the same process does not re-walk the tree", () => {
+    // Only "Gadget" exists when the first call scans, so it passes and the
+    // scan result for these exact roots is cached. A "Widget" component is
+    // then added to the SAME repoRoot before the second, otherwise-identical
+    // call. Without the cache, the second call would walk the tree fresh,
+    // find the new "Widget" folder, and deny; with the cache, it reuses the
+    // stale scan from before "Widget" existed and still passes — proving the
+    // tree was not re-walked.
+    const repoRoot = seededRepo(tmpdir, ["src/components/Gadget/Gadget.tsx"]);
+    const ctxFields = {
+      toolName: "Write",
+      filePath: path.join(repoRoot, "src", "hooks", "useWidget.ts"),
+      git: { repoRoot },
+      project: { conventions: CONVENTIONS },
+    };
+
+    eq(decide(rule, ctxFields), "pass");
+
+    fs.mkdirSync(path.join(repoRoot, "src", "components", "Widget"), { recursive: true });
+    fs.writeFileSync(path.join(repoRoot, "src", "components", "Widget", "Widget.tsx"), "// placeholder\n");
+
+    eq(decide(rule, ctxFields), "pass");
+  });
 });

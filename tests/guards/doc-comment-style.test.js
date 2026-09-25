@@ -24,6 +24,30 @@ function lineComments(n) {
   return "// x\n".repeat(n);
 }
 
+/**
+ * Builds a `/** ... *\/` block whose body is `n` filler prose lines followed
+ * by one `@param` line — the shape that used to exempt an oversized block
+ * from the length ceiling at any length, before a tag anywhere stopped being
+ * treated as proof the whole block was structured.
+ *
+ * @param {number} n The number of prose filler lines before the tag.
+ * @returns {string} The block text.
+ */
+function proseBlockWithTrailingParam(n) {
+  return "/**\n" + " *x\n".repeat(n) + " * @param x Something.\n */";
+}
+
+/**
+ * Builds a `/** ... *\/` block of two `n`-line prose paragraphs separated by
+ * one blank ` *` line.
+ *
+ * @param {number} n The number of filler lines in each paragraph.
+ * @returns {string} The block text.
+ */
+function twoProseParagraphs(n) {
+  return "/**\n" + " *x\n".repeat(n) + " *\n" + " *x\n".repeat(n) + " */";
+}
+
 suite("guards/doc-comment-style", ({ test, eq }) => {
   /* -------------------------------------------------------- positive: deny */
 
@@ -49,8 +73,37 @@ suite("guards/doc-comment-style", ({ test, eq }) => {
     eq(decide(rule, { toolName: "Write", filePath: "a.ts", content: proseBlock(20) }), "ask");
   });
 
+  test("asks on an oversized prose run even when the block ends in one @param", () => {
+    // 25 prose lines plus the opening line, the trailing @param line and the
+    // closing line make 28 lines total. Before the fix, that single @param
+    // exempted the whole block from the length ceiling no matter how long the
+    // prose run in front of it was; now the ceiling judges the run itself.
+    eq(decide(rule, { toolName: "Write", filePath: "a.ts", content: proseBlockWithTrailingParam(25) }), "ask");
+  });
+
+  test("asks on a 20-line unbroken prose run even inside a fully tagged block", () => {
+    const content = "/**\n" + " *x\n".repeat(20) + " *\n * @param a A.\n * @returns b B.\n */";
+    eq(decide(rule, { toolName: "Write", filePath: "a.ts", content }), "ask");
+  });
+
+  test("passes two prose paragraphs separated by a blank line, neither past the ceiling", () => {
+    eq(decide(rule, { toolName: "Write", filePath: "a.ts", content: twoProseParagraphs(12) }), "pass");
+  });
+
+  test("passes 30 bullet lines followed by a long @-tag list", () => {
+    const bulletsAndTags =
+      "/**\n * Options.\n *\n" +
+      " * - opt: does a thing\n".repeat(30) +
+      " * @param a First.\n * @param b Second.\n * @param c Third.\n * @returns void.\n */";
+    eq(decide(rule, { toolName: "Write", filePath: "a.ts", content: bulletsAndTags }), "pass");
+  });
+
   test("asks on more than 6 consecutive // lines", () => {
     eq(decide(rule, { toolName: "Edit", filePath: "a.tsx", content: lineComments(9) }), "ask");
+  });
+
+  test("keeps asking on 12 consecutive // lines", () => {
+    eq(decide(rule, { toolName: "Edit", filePath: "a.tsx", content: lineComments(12) }), "ask");
   });
 
   /* ------------------------------------------------- positive: ask, XML tags */
@@ -283,9 +336,25 @@ suite("guards/doc-comment-style", ({ test, eq }) => {
     eq(decide(rule, { toolName: "Edit", filePath: "a.ts", content: "// see TASK-54321 in the tracker" }), "deny");
   });
 
+  test("denies every ticket-word spelling and separator a person actually writes", () => {
+    eq(decide(rule, { toolName: "Edit", filePath: "a.ts", content: "// Task 30464 phase 2: build groups" }), "deny");
+    eq(
+      decide(rule, { toolName: "Edit", filePath: "a.ts", content: "describe('filterGroups task 30464 phase 2', () => {});" }),
+      "deny",
+    );
+    eq(decide(rule, { toolName: "Edit", filePath: "a.ts", content: "// ticket 30464 needs a fix" }), "deny");
+    eq(decide(rule, { toolName: "Edit", filePath: "a.ts", content: "// issue 30464 needs a fix" }), "deny");
+    eq(decide(rule, { toolName: "Edit", filePath: "a.ts", content: "// story#30464 needs a fix" }), "deny");
+    eq(decide(rule, { toolName: "Edit", filePath: "a.ts", content: "// bug: 30464 needs a fix" }), "deny");
+  });
+
   test("passes a word that merely starts with task, with no id after it", () => {
     eq(decide(rule, { toolName: "Edit", filePath: "a.ts", content: "// the task queue drains oldest first" }), "pass");
     eq(decide(rule, { toolName: "Edit", filePath: "a.ts", content: "// task_id is assigned by the server" }), "pass");
+  });
+
+  test("passes a ticket word followed by too few digits to be an id", () => {
+    eq(decide(rule, { toolName: "Edit", filePath: "a.ts", content: "// task 30 items remain in the queue" }), "pass");
   });
 
   test("passes a short numeric fragment that is not a ticket id", () => {
@@ -300,8 +369,25 @@ suite("guards/doc-comment-style", ({ test, eq }) => {
     eq(decide(rule, { toolName: "Edit", filePath: "a.ts", content: "// border: 1px solid #639;" }), "pass");
   });
 
+  test("passes a 3-letter hex color that uses hex-only letters, not a ticket id", () => {
+    eq(decide(rule, { toolName: "Write", filePath: "a.ts", content: "const theme = {\n  primary: '#fff',\n};\n" }), "pass");
+  });
+
+  test("passes a 6-letter hex color that uses hex-only letters, not a ticket id", () => {
+    eq(decide(rule, { toolName: "Write", filePath: "a.ts", content: "const theme = {\n  primary: '#a1b2c3',\n};\n" }), "pass");
+  });
+
   test("passes a numeric URL fragment, not a ticket id", () => {
     eq(decide(rule, { toolName: "Edit", filePath: "a.ts", content: "// see https://en.wikipedia.org/wiki/Section#1990s for background" }), "pass");
+  });
+
+  test("passes a long word right before a # fragment, past the short-prefix cap", () => {
+    eq(decide(rule, { toolName: "Edit", filePath: "a.ts", content: "// see Section#1990 here" }), "pass");
+  });
+
+  test("denies the Azure Boards AB# spelling alongside the bare # form", () => {
+    eq(decide(rule, { toolName: "Edit", filePath: "a.ts", content: "// AB#31921 fixed the off-by-one" }), "deny");
+    eq(decide(rule, { toolName: "Edit", filePath: "a.ts", content: "// #31921 fixed the off-by-one" }), "deny");
   });
 
   test("passes a banner comment in a .cs file that is not JSDoc", () => {

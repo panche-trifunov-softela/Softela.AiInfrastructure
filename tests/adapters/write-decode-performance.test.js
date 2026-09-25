@@ -140,14 +140,16 @@ const FORCE_CHANGE_SCOPE_RULE = {
 /**
  * R4: how many already-large tracked files the budget test writes to disk.
  * Deliberately far fewer than the task's own 200-file reproduction (kept
- * that way as a standalone, non-persisted probe) — enough combined bytes to
- * make a hunk-bytes-only budget's failure mode obvious (reading, splitting
- * and searching every one of them) while keeping this suite fast.
+ * that way as a standalone, non-persisted probe) — enough combined bytes,
+ * against {@link R4_FILE_BYTES} and the real `MAX_RECONSTRUCT_BYTES` in
+ * `core/lib/write-decode.js`, to push several files fully over the ceiling
+ * while keeping this suite fast: 10 * 8 MiB comfortably clears the 64 MB
+ * budget, unlike a count sized only to have cleared the previous 8 MB one.
  */
-const R4_FILE_COUNT = 30;
+const R4_FILE_COUNT = 10;
 
 /** R4: how large each of those tracked files is, before its own tiny diff. */
-const R4_FILE_BYTES = 2 * 1024 * 1024;
+const R4_FILE_BYTES = 8 * 1024 * 1024;
 
 /** R4: one filler line reused to build each large tracked file's bulk. */
 const R4_FILLER_LINE = "export const filler = 1;\n";
@@ -198,9 +200,12 @@ suite("adapters/write-decode-performance", ({ test, eq, ok, tmpdir }) => {
     // the size of the file `readFile` actually loads, splits and searches —
     // so all R4_FILE_COUNT files sailed under the ceiling while doing full
     // reconstruction work proportional to R4_FILE_COUNT * R4_FILE_BYTES.
-    // With the budget instead charged on the real bytes read, the very
-    // first ~2MB file already exhausts the 2,000,000-byte ceiling, so every
-    // later file's own `readFile` is skipped entirely.
+    // With the budget instead charged on the real bytes read (against the
+    // real 64,000,000-byte MAX_RECONSTRUCT_BYTES): the first 7 files (~56 MB)
+    // fit and are fully read, split and searched; the 8th file's own read
+    // pushes the running total past the ceiling, so its split/search is
+    // skipped; the 9th and 10th are skipped before their own `readFile` call
+    // is even made.
     const repo = tmpdir();
     const relPaths = [];
     for (let i = 0; i < R4_FILE_COUNT; i += 1) {

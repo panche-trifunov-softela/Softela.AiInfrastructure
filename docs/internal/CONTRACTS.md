@@ -279,8 +279,9 @@ evaluate(ctx, options) → null | { action, reason, fix, ruleId }
    carries `ruleId` so the developer can see which rule spoke, and so an
    override can be written without guessing.
 9. Mark the surviving decision `advisory: true` when it is an `ask` that is
-   advice rather than a question: the rule declares `advisoryAsk` (§3), or
-   step 6 has just reframed its reason as advice. Only ever set on an `ask`
+   advice rather than a question: the rule declares `advisoryAsk` (§3), the
+   rule's own `evaluate` result carries `advisory: true`, or step 6 has just
+   reframed its reason as advice. Only ever set on an `ask`
    — a `deny` blocks on every host, and an override that deliberately
    escalated a nudge into a denial must not have that undone. A host with a
    native `ask` ignores the field entirely; Codex, which has none, uses it
