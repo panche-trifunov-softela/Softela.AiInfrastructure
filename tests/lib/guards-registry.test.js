@@ -17,7 +17,7 @@ const guards = require("../../core/guards");
 const KNOWN_GROUPS = new Set(["git", "code", "agent"]);
 
 /** How many rules RULES.md's own catalogue lists per group. */
-const EXPECTED_GROUP_COUNTS = { git: 11, code: 18, agent: 7 };
+const EXPECTED_GROUP_COUNTS = { git: 11, code: 21, agent: 7 };
 
 /**
  * Every rule id the registry is expected to hold, sorted. Asserted as the
@@ -31,7 +31,9 @@ const EXPECTED_RULE_IDS = [
   "api-import-boundary",
   "barrel-exports-only",
   "branch-naming",
+  "code-block-spacing",
   "colocated-tests",
+  "comment-line-width",
   "commit-message",
   "component-folder-shape",
   "component-types-file",
@@ -46,6 +48,7 @@ const EXPECTED_RULE_IDS = [
   "infra-self-protection",
   "layer-dependencies",
   "local-config-isolation",
+  "module-file-shape",
   "naming-standards",
   "no-edit-generated-docs",
   "no-explicit-any",

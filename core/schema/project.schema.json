@@ -156,7 +156,8 @@
       "additionalProperties": false,
       "properties": {
         "maxBlockLines": { "type": "integer", "minimum": 1 },
-        "maxLineCommentRun": { "type": "integer", "minimum": 1 }
+        "maxLineCommentRun": { "type": "integer", "minimum": 1 },
+        "maxLineWidth": { "type": "integer", "minimum": 1 }
       }
     },
     "delegation": {
@@ -245,7 +246,9 @@
         "api-import-boundary",
         "barrel-exports-only",
         "branch-naming",
+        "code-block-spacing",
         "colocated-tests",
+        "comment-line-width",
         "commit-message",
         "component-folder-shape",
         "component-types-file",
@@ -260,6 +263,7 @@
         "infra-self-protection",
         "layer-dependencies",
         "local-config-isolation",
+        "module-file-shape",
         "naming-standards",
         "no-edit-generated-docs",
         "no-explicit-any",

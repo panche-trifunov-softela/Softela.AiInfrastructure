@@ -314,6 +314,53 @@ tracks brace depth so a `type`/`interface` sitting inside a function body
 type-only import or re-export (`import type { … }`, `export type { … } from
 "./types"`) is not a declaration and never matches.
 
+### `module-file-shape` · ask (advisory) · `stacks: ["frontend"]` · `requiresConfig: ["conventions.componentFolders"]`
+A brand-new source file **outside** the component tree that carries real logic
+and also declares its own type, interface or enum, or exports an
+`UPPER_SNAKE_CASE` constant, is doing more than one job on the day it is
+written. `shared-code-boundaries.md` and `component-structure.md` name where
+each part belongs; `migration-approach.md` Phase 1 is what makes it a day-one
+requirement rather than something to do once the file has grown.
+
+This is the non-component counterpart to `component-types-file`. That rule
+judges a view and its own hook inside a component folder; a store, a context,
+a root-level hook or a shared utility is not in one, so nothing looked at
+those until this rule. The two never overlap: a file matching
+`conventions.componentFolders` is excluded here and left to the component
+rules, and so is a file that is itself the destination — a `types.ts`, a file
+under `types/`, a `constants.ts`, an `index.ts` barrel.
+
+**An exported constant is recognised through either syntax.** Requiring the
+literal `export const NAME` missed a bare `const NAME` re-listed in a
+top-level `export { NAME }` clause, which exports exactly the same thing. Both
+forms count, the rename form included, and the tie-break uses the position of
+the `const` itself rather than of the clause that re-lists it. A constant that
+is never exported still does not fire: what belongs in its own file is a
+question for callers outside the module, and a private one has none.
+
+**Where the advice points depends on what can be verified.**
+`shared-code-boundaries.md` keeps a store's and an API service's types out of
+a colocated `types.ts`, but there is no `conventions.store` field to detect a
+store by, and inventing a filename convention to guess at one is the failure
+the standards forbid. Where the file matches `conventions.apiLayer` — the one
+case the rule can actually check — the advice names only the shared types
+location. Everywhere else it names a colocated `types.ts` and states the
+store and API-service exception, rather than offering both as an equally
+correct choice.
+
+Advisory, and deliberately so. Whether a particular constant has earned its
+own file is a judgement a scanner cannot settle, and a rule that blocks on
+that judgement would be wrong often enough to be switched off. It states what
+it found and where the standard puts it, and the call proceeds.
+
+**Softela adaptation.** Softela.Bugworx is plain JavaScript (`.js`/`.jsx`,
+shapes written as JSDoc `@typedef`), so the destination this rule names for a
+`.js`/`.jsx` file is `types.js`/`constants.js`, not `types.ts`/`constants.ts`;
+a `.ts`/`.tsx` file keeps the `.ts` destinations. The `type`/`interface`/
+`enum` half of the check is unchanged and is TypeScript-only syntax — in a
+`.js`/`.jsx` file only the exported `UPPER_SNAKE_CASE` constant half applies;
+this rule does not parse a JSDoc `@typedef` and never fires on one.
+
 ### `component-view-logic` · deny · `stacks: ["frontend"]` · `requiresConfig: ["conventions.componentFolders"]`
 A new component view file may not carry `useState`/`useReducer`,
 `useEffect`/`useLayoutEffect`, an `addEventListener` call, an `await`, or a
@@ -691,6 +738,111 @@ exactly as this rule asks — a summary plus a `<param>` per parameter and a
 `ask` was a hard stop, that denied correct documentation on every properly
 documented method. A doc block now ends a run of plain `//` lines rather than
 extending it; a genuine run of `//` lines in a `.cs` file still asks.
+
+### `comment-line-width` · ask (advisory) · `requiresConfig: ["docCommentStyle.maxLineWidth"]`
+A newly written comment line wider than the project's configured width. The
+width is measured as a reader sees it — indentation and the leading ` * `,
+`//` or `///` marker included — because that is what decides whether the line
+fits on screen, not the prose alone.
+
+**The width is configuration, never a constant.** Repositories set their own
+code width (a Prettier `printWidth` of 80 in one, 100 in the next), so a
+number compiled into the rule would be wrong for some of them. The rule is
+silent until a project states its own. Nothing is inherited and nothing is
+guessed. No Softela project sets `docCommentStyle.maxLineWidth` yet, so the
+rule is currently inactive everywhere.
+
+Three shapes are exempt, because a rule that fires where no fix exists gets
+ignored: a line whose overflow is a single unbreakable token — a URL, a
+qualified identifier, a long type literal; a markdown table row inside a doc
+block; and any line inside a fenced code sample, where reflowing would
+falsify what is quoted.
+
+Both of the last two carve-outs are narrower than they first look, and were
+too wide when this rule shipped. **Unbreakable is about the token, not about
+the absence of a space.** Having no whitespace past the limit only shows the
+line was not broken there, not that it could not have been: an ordinary
+sentence whose short last word straddles the limit has a perfectly good wrap
+point right before that word. The exemption applies only when the straddling
+token is itself longer than the configured width, so no line break placed
+anywhere would help. **The fence state is scoped to the comment run that
+opened it**, and is reset the moment the scan reaches a line that is not a
+comment or the block comment carrying it closes. Left unscoped, a single
+unmatched fence marker turns the width check off for the rest of the file.
+
+Advisory. Wrapping a comment is mechanical and the developer settled it as a
+nudge rather than a block, so the call proceeds and the reason names the
+configured limit, the width reached, and the line.
+
+### `code-block-spacing` · ask (advisory) · `stacks: ["frontend"]` · no configuration required
+Two blank-line checks on newly written source, both from `clean-code.md`'s
+"Whitespace is part of readability".
+
+**A statement spanning more than one line is separated from its neighbours.**
+A run of single-line declarations of the same kind is not — several
+`useState` calls one after another read perfectly well. The difficulty starts
+where a multi-line construct sits flush against something else: a `useMemo`
+with a body directly above a `useRef`, directly above a `useEffect`. That
+distinction is what makes this checkable at all, and it is why the rule
+counts nothing: a line-count threshold would flag the readable run and miss
+the unreadable one.
+
+**A documented member is separated from the member before it.**
+`code-documentation.md` requires the blank line between each comment-member
+pair; this is the part of that requirement a scanner can settle.
+
+Exempt: a run of imports, and a run of re-exports, both of which declare what
+a module takes and surfaces rather than stepping through anything; anything
+at bracket depth, since an object property or an argument is not a statement;
+a type, interface, class or enum body, whose member spacing is the second
+check's business; a `switch` case; and a comment block immediately above a
+statement, which belongs to that statement rather than being its neighbour.
+
+Reads `ctx.resultingContent` rather than `ctx.content`, the same as
+`no-explicit-any`. The rule judges adjacency, and an `Edit` that inserts one
+hook call among existing ones carries only the inserted text — the neighbour
+that decides the outcome is outside it.
+
+**Where the segment scanner reaches, and where it stops.** A block body
+passed as an argument is scanned like any other block: an argument span is
+skipped for its own punctuation, but a `{` inside it that opens a statement
+body is recursed into, so the statements in a `useEffect` or a `map` callback
+are checked exactly as top-level ones are. A `catch` with no binding opens a
+block like any other; classifying it as opaque instead does not merely miss
+the block, it fuses the whole `try`/`catch` with whatever follows and reports
+a boundary that is not there. A newline ends a statement only when the line
+below it opens with a keyword that cannot continue an expression **and** the
+line above it does not end on an operator, a separator or an opening
+delimiter. Both halves are needed: `function`, `class` and `import` are also
+legal in expression position, so reading only the line below splits
+`const handler =` from the function expression it is assigned. Anything less
+certain than that — a chained call, a bare identifier, an operator
+continuation — is left merged, because a boundary invented in the wrong place
+puts a wrong line number in front of the developer, which costs more than the
+miss does.
+
+**Why advisory rather than deny.** The severity was settled by measurement
+against real production code, on a criterion fixed before the number was
+known: near-zero false positives would justify a block, anything else would
+not. Measuring found six parsing defects in two rounds — a statement closed
+at its block brace so a trailing `};` became its own statement, generic type
+arguments split at their own comma because `<` and `>` were not tracked, a
+regex literal containing a quote character corrupting the string mask for the
+rest of the file, and then the three the paragraph above describes. Every one
+of them was found by running the rule over a real repository or by review,
+and none by the unit tests, which were green throughout. With all six fixed
+the rule fires on 56.0% of 1067 files in one frontend repository and 65.2% of
+92 in the other, judging each as newly written. A hand audit of a spread
+sample found the hits genuine: the rule is accurate, and the convention is
+simply not followed widely enough in existing code for a block to be
+proportionate. It advises, and can be raised later.
+
+**Softela adaptation.** Softela.Bugworx is plain-JavaScript React, so the
+guard's file match is widened from TypeScript/TSX only to
+`SOURCE_FILE = /\.[jt]sx?$/i`, covering `.js` and `.jsx` as well as `.ts` and
+`.tsx`; a run-together statement shape asks in a `.js` file exactly as it does
+in a `.ts` one, and JSX is scanned whether it sits in a `.jsx` or a plain
+`.js` file.
 
 ### `reuse-before-new` · ask (advisory) · no configuration required
 Fires when a new file declares an exported helper, hook or type whose name is

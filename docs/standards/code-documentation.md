@@ -149,14 +149,65 @@ counter += 1;
 counter += 1;
 ```
 
+The same failure exists at the scale of a whole comment block, not only a
+single line. A block that narrates an implementation step by step — first
+this branch runs, then that value is checked, then the loop advances — is
+not documentation: every one of those steps is already visible in the code
+immediately below it. State the conclusion the block guarantees instead of
+retracing how the code reaches it.
+
+```ts
+// Bad — walks through the loop instead of stating what it produces.
+// Loop over the rows, and for each one check whether it is still pending;
+// if it is, add its amount to the running total, then move to the next row.
+let total = 0;
+for (const row of rows) {
+  if (row.status === "PENDING") {
+    total += row.amount;
+  }
+}
+
+// Good — states what the block guarantees.
+// Only a pending row counts toward the total; a settled or cancelled row
+// does not.
+let total = 0;
+for (const row of rows) {
+  if (row.status === "PENDING") {
+    total += row.amount;
+  }
+}
+```
+
 **Delete commented-out code rather than leaving it behind** — version
 control already remembers it, and a comment is not the place to keep it "just
 in case".
+
+**Delete a drafting note before committing, the same as commented-out
+code.** A note written to think through a problem while it is still being
+solved — an approach being tried, a record of why an earlier attempt did not
+work — is a normal part of writing the change, not part of the change
+itself. Left in place, it documents how the implementation was arrived at
+rather than what it does, and a reader has no way to tell it apart from an
+actual explanation of current behaviour.
 
 **Never name a specific customer, screen or environment** in a comment or a
 doc block, in either language. It leaks context that belongs outside the
 source tree into shared code, and it goes stale the moment the screen is
 renamed or the customer no longer matters — describe the behaviour instead.
+
+## Comment width
+
+A comment line stays within the width the project has configured for its
+code, measured the way a reader actually sees it — indentation and the
+leading comment marker (`//`, `*`, `///`) count toward the limit, not only
+the text that follows them.
+
+The width itself is per-project configuration, not a number fixed here: the
+projects this rulebook serves legitimately differ in how wide a line they
+allow. A line whose only overflow is a single token with nowhere to
+wrap — a long URL, an unbroken identifier — is not a violation; the rule is
+about a sentence that could have wrapped and did not, not about a token that
+could not.
 
 ## Anti-patterns
 
@@ -169,7 +220,9 @@ renamed or the customer no longer matters — describe the behaviour instead.
 | "Useful for the X screen", "use this when building Y" | Usage advice rots when callers change; describe behavior |
 | Naming a specific customer, screen or environment | Leaks context into shared code, and it goes stale |
 | Restating the code in words | Adds volume, not information |
+| A comment block narrating an implementation step by step | Every step is already visible in the code it describes |
 | A summary that describes the file's history or a past bug | Belongs in the commit message |
+| A drafting note left over from working out the change | Documents how the code was found, not what it does |
 
 ## Where the load falls in a well-split component
 
@@ -232,8 +285,15 @@ cannot tell a genuine long explanation from an unlabelled enumeration by
 line count alone, so the list-vs-prose call always stays with whoever is
 writing or reviewing the code.
 
-Not mechanically enforced: the blank line between a type's members, that a
-type's own block does not re-list its members, `@param`/`@returns`
-completeness on the frontend side (only the backend's `<param>`/`<returns>`
-tags are checked), and the "state behaviour, not usage" rule. These stay a
-review standard the guard cannot judge from written text alone.
+Two further checks advise without blocking the call. One fires when a comment
+line exceeds the project's configured code width, and is silent until a
+project declares that width. The other fires on a documented member with no
+blank line separating it from the member before it — the gap this document
+requires between one comment-member pair and the next.
+
+Not mechanically enforced: that a type's own block does not re-list its
+members, `@param`/`@returns` completeness on the frontend side (only the
+backend's `<param>`/`<returns>` tags are checked), the "state behaviour, not
+usage" rule, stating a conclusion rather than narrating an implementation,
+and a retained drafting note. These stay a review standard the guard cannot
+judge from written text alone.
