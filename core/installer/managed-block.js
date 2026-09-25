@@ -26,16 +26,6 @@ const BEGIN = "<!-- BEGIN softela-ai (managed — edits here are overwritten on 
 const END = "<!-- END softela-ai -->";
 
 /**
- * Escapes a string for literal use inside a regular expression.
- *
- * @param {string} s The string to escape.
- * @returns {string} `s` with every regex metacharacter escaped.
- */
-function escapeRegExp(s) {
-  return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-}
-
-/**
  * Raised when a file's marker occurrences cannot be unambiguously attributed
  * to a single region this installer owns — more or less than one literal
  * `BEGIN`, more or less than one literal `END`, or an `END` appearing before
@@ -221,6 +211,14 @@ function applyTemplate(existingContent, templateContent) {
  * Removes the managed block, and up to one surrounding blank line on each
  * side, from a file's content.
  *
+ * The trimming is done with index arithmetic over `locateBlock`'s offsets
+ * rather than a regular expression built from the block's own text. A
+ * verbatim-standards block can run past a hundred kilobytes, and compiling
+ * that much literal text into a pattern — solely to trim one optional
+ * newline and a run of spaces or tabs around it — exceeds the regex
+ * engine's own size limit and throws. Offsets and `slice` have no such
+ * limit, so the same trimming is done directly on the string instead.
+ *
  * @param {string} content The file's current content.
  * @returns {{content: string, changed: boolean}} The content with the block
  * removed, collapsing any run of three or more resulting blank lines down
@@ -236,9 +234,20 @@ function removeBlock(content) {
   const span = locateBlock(current);
   if (!span) return { content: current, changed: false };
 
-  const blockText = current.slice(span.start, span.end);
-  const re = new RegExp(`\\n?[ \\t]*${escapeRegExp(blockText)}\\n?`);
-  const withoutBlock = current.replace(re, "\n");
+  let leadStart = span.start;
+  while (leadStart > 0 && (current[leadStart - 1] === " " || current[leadStart - 1] === "\t")) {
+    leadStart--;
+  }
+  if (leadStart > 0 && current[leadStart - 1] === "\n") {
+    leadStart--;
+  }
+
+  let trailEnd = span.end;
+  if (current[trailEnd] === "\n") {
+    trailEnd++;
+  }
+
+  const withoutBlock = current.slice(0, leadStart) + "\n" + current.slice(trailEnd);
   const collapsed = withoutBlock.replace(/\n{3,}/g, "\n\n");
 
   if (locateBlock(collapsed) !== null) {

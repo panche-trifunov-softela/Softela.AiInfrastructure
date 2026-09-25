@@ -159,8 +159,8 @@ function withLock(agent, fn) {
  *
  * @param {string} agent `"claude"` or `"codex"`.
  * @param {string} version The version about to be installed.
- * @returns {object} A manifest with no files, settings, blocks or modules
- * recorded yet.
+ * @returns {object} A manifest with no files, settings, blocks, modules or
+ * explicitly-disabled modules recorded yet.
  */
 function emptyManifest(agent, version) {
   return {
@@ -171,11 +171,18 @@ function emptyManifest(agent, version) {
     settings: [],
     blocks: [],
     modules: [],
+    disabledModules: [],
   };
 }
 
 /**
  * Reads and normalises the manifest for an agent.
+ *
+ * `disabledModules` — module ids the developer explicitly turned off via
+ * `softela-ai module disable` — defaults to an empty array for a manifest
+ * written before this field existed, exactly like every other field here:
+ * there is no migration step, and a manifest that predates the field is
+ * simply treated as recording no explicit disables yet.
  *
  * @param {string} agent `"claude"` or `"codex"`.
  * @returns {object | null} The manifest with every field defaulted to its
@@ -207,6 +214,7 @@ function readManifest(agent) {
     settings: Array.isArray(data.settings) ? data.settings : [],
     blocks: Array.isArray(data.blocks) ? data.blocks : [],
     modules: Array.isArray(data.modules) ? data.modules : [],
+    disabledModules: Array.isArray(data.disabledModules) ? data.disabledModules : [],
   };
 }
 

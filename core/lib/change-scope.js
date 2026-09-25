@@ -167,8 +167,13 @@ const renameDestinationsCache = new Map();
  * total instead of one per path. Before this cache, step 1's "tracked" check
  * ran `git ls-files --error-unmatch -- <path>` once per call, which turned
  * evaluating an N-file patch into roughly N synchronous git subprocesses in
- * series (about 40ms each) — comfortably enough to blow through the
- * 5-second `PreToolUse` hook timeout on its own. Never cleared, for the same
+ * series (about 40ms each). Against the real `PreToolUse` hook budget
+ * (`HOOK_TIMEOUT_SECONDS` in `core/installer/plan.js`, 30 seconds — six
+ * times looser than the 5 seconds once assumed here), that loop alone needs
+ * on the order of 750 files to exhaust the whole budget on its own rather
+ * than the ~125 that would have done it at 5 seconds — still comfortably
+ * within reach of a large automated rename or codegen sweep. Never cleared,
+ * for the same
  * reason {@link renameDestinationsCache} is not.
  *
  * @type {Map<string, Set<string>>}

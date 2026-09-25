@@ -1,7 +1,14 @@
 "use strict";
 
 const { suite } = require("../harness");
-const { decodeWrites, decodeWritesDetailed, isWriteToolName, KNOWN_PATCH_MARKERS } = require("../../core/lib/write-decode");
+const {
+  decodeWrites,
+  decodeWritesDetailed,
+  isWriteToolName,
+  KNOWN_PATCH_MARKERS,
+  decodePatchBody,
+  MAX_RECONSTRUCT_BYTES,
+} = require("../../core/lib/write-decode");
 
 /**
  * Builds a `readFile`-shaped function backed by a plain path-to-content map,
@@ -322,6 +329,179 @@ suite("lib/write-decode", ({ test, eq, deepEq, ok }) => {
         pathBase: "repoRoot",
       },
     ]);
+  });
+
+  /* ------------------------------------------- budget gap: one oversized file */
+
+  test("R5: applyHunksToFile's budget gate stops reconstruction the instant a file's OWN size exceeds what remains — not only on the next file's reserve()", () => {
+    // Before the fix, `applyHunksToFile` called `budget.chargeBytes(existing.length)`
+    // and threw away its return value, so a file whose own size alone
+    // exhausted the budget was still split, searched and reconstructed in
+    // full — only the NEXT file's own `reserve()` call would ever see the
+    // damage. This budget's `chargeBytes` always reports "over budget",
+    // simulating a file whose size alone is already too much (`reserve()`
+    // and `take()` still succeed, exactly like the real budget before this
+    // file's size is known) — a small fixture stands in for a large one
+    // since the structural gap this proves is independent of how big the
+    // file actually is.
+    const body = ["*** Update File: src/Big.ts", " context line", "-old", "+new", " after"].join("\n");
+    const readFile = fakeReader({ "src/Big.ts": "context line\nold\nafter" });
+    const budget = { reserve: () => true, take: () => true, chargeBytes: () => false };
+
+    const { ambiguous, entries } = decodePatchBody(body, readFile, () => true, budget);
+
+    eq(ambiguous, false);
+    // Without the fix this would be the fully-applied
+    // "context line\nnew\nafter" — the hunk genuinely does match — proving
+    // the budget's own verdict on this file's size was never consulted.
+    deepEq(entries, [{ path: "src/Big.ts", content: null, kind: "update", pathBase: "repoRoot" }]);
+  });
+
+  /* --------------------------------------------- statFile: read-avoidance gap */
+
+  test("THE GAP THIS UNIT CLOSES: statFile lets an over-budget file's own size be charged BEFORE readFile is ever called for it", () => {
+    // Direct proof, not merely a null-content inference: `readFile` throws if
+    // it is ever invoked for this section's path, so a bug that still reads
+    // the file before consulting `statFile` fails this test loudly rather
+    // than merely producing the same `content: null` a correct implementation
+    // would also produce.
+    const body = ["*** Update File: src/Huge.ts", " context line", "-old", "+new", " after"].join("\n");
+    const readFile = () => {
+      throw new Error("readFile must not be called once statFile alone already exceeds the budget");
+    };
+    const chargeCalls = [];
+    const budget = {
+      reserve: () => true,
+      take: () => true,
+      chargeBytes(n) {
+        chargeCalls.push(n);
+        return false;
+      },
+    };
+    const statFile = () => MAX_RECONSTRUCT_BYTES;
+
+    const { ambiguous, entries } = decodePatchBody(body, readFile, () => true, budget, undefined, statFile);
+
+    eq(ambiguous, false);
+    deepEq(entries, [{ path: "src/Huge.ts", content: null, kind: "update", pathBase: "repoRoot" }]);
+    deepEq(chargeCalls, [MAX_RECONSTRUCT_BYTES], "the stat's own size, not the (never-read) file content, must be charged");
+  });
+
+  test("a file that fits, with statFile supplied, charges its size exactly once and reconstructs unchanged", () => {
+    const existing = "context line\nold\nafter";
+    const body = ["*** Update File: src/Fine.ts", " context line", "-old", "+new", " after"].join("\n");
+    const readFile = fakeReader({ "src/Fine.ts": existing });
+    const chargeCalls = [];
+    const budget = {
+      reserve: () => true,
+      take: () => true,
+      chargeBytes(n) {
+        chargeCalls.push(n);
+        return true;
+      },
+    };
+    const statFile = (p) => (p === "src/Fine.ts" ? existing.length : null);
+
+    const { ambiguous, entries } = decodePatchBody(body, readFile, () => true, budget, undefined, statFile);
+
+    eq(ambiguous, false);
+    deepEq(entries, [{ path: "src/Fine.ts", content: "context line\nnew\nafter", kind: "update", pathBase: "repoRoot" }]);
+    // Exactly one charge: the stat already answered, so the post-read charge
+    // must be skipped rather than double-counting the same file's bytes.
+    deepEq(chargeCalls, [existing.length]);
+  });
+
+  test("statFile returning null (a file the stat itself cannot answer for) falls back to the read-then-check path, and never throws", () => {
+    const body = ["*** Update File: src/Unstattable.ts", " x", "-a", "+b"].join("\n");
+    const readFile = fakeReader({ "src/Unstattable.ts": "x\na\n" });
+    const chargeCalls = [];
+    const budget = {
+      reserve: () => true,
+      take: () => true,
+      chargeBytes(n) {
+        chargeCalls.push(n);
+        return true;
+      },
+    };
+    const statFile = () => null;
+
+    let threw = false;
+    let result;
+    try {
+      result = decodePatchBody(body, readFile, () => true, budget, undefined, statFile);
+    } catch {
+      threw = true;
+    }
+
+    eq(threw, false);
+    eq(result.ambiguous, false);
+    deepEq(result.entries, [{ path: "src/Unstattable.ts", content: "x\nb\n", kind: "update", pathBase: "repoRoot" }]);
+    // The stat answered nothing, so the charge must come from the read's own
+    // real length — exactly today's fallback, not skipped and not doubled.
+    deepEq(chargeCalls, ["x\na\n".length]);
+  });
+
+  test("omitting statFile altogether (an older caller) falls back to exactly today's read-then-check behaviour", () => {
+    // No 6th argument at all — the shape every pre-existing caller of
+    // decodePatchBody (including R5, above) already uses.
+    const body = ["*** Update File: src/NoStat.ts", " x", "-a", "+b"].join("\n");
+    const readFile = fakeReader({ "src/NoStat.ts": "x\na\n" });
+    const budget = { reserve: () => true, take: () => true, chargeBytes: () => true };
+
+    const { ambiguous, entries } = decodePatchBody(body, readFile, () => true, budget);
+
+    eq(ambiguous, false);
+    deepEq(entries, [{ path: "src/NoStat.ts", content: "x\nb\n", kind: "update", pathBase: "repoRoot" }]);
+  });
+
+  test("decodeWrites end-to-end: a statFileRepoRoot answering an over-budget size means the reader is never reached, even through the full apply_patch path", () => {
+    const patch = [
+      "*** Begin Patch",
+      "*** Update File: src/Huge.ts",
+      " context",
+      "-old",
+      "+new",
+      "*** End Patch",
+    ].join("\n");
+    const readFileRepoRoot = () => {
+      throw new Error("readFileRepoRoot must not be called for an over-budget file");
+    };
+    const writes = decodeWrites(
+      "apply_patch",
+      { input: patch },
+      {
+        readFile: fakeReader({}),
+        readFileRepoRoot,
+        pathExistsRepoRoot: () => true,
+        statFileRepoRoot: () => MAX_RECONSTRUCT_BYTES,
+      },
+    );
+    deepEq(writes, [{ path: "src/Huge.ts", content: null, kind: "update", pathBase: "repoRoot" }]);
+  });
+
+  test("decodeWrites end-to-end: statFileRepoRoot defaults to statFile when only the latter is supplied, mirroring readFileRepoRoot's own default", () => {
+    const patch = [
+      "*** Begin Patch",
+      "*** Update File: src/Huge.ts",
+      " context",
+      "-old",
+      "+new",
+      "*** End Patch",
+    ].join("\n");
+    const readFileRepoRoot = () => {
+      throw new Error("readFileRepoRoot must not be called for an over-budget file");
+    };
+    const writes = decodeWrites(
+      "apply_patch",
+      { input: patch },
+      {
+        readFile: fakeReader({}),
+        readFileRepoRoot,
+        pathExistsRepoRoot: () => true,
+        statFile: () => MAX_RECONSTRUCT_BYTES,
+      },
+    );
+    deepEq(writes, [{ path: "src/Huge.ts", content: null, kind: "update", pathBase: "repoRoot" }]);
   });
 
   test("apply_patch update reconstruction fails to content:null when a hunk's context cannot be located", () => {

@@ -25,6 +25,7 @@ suite("installer/manifest", ({ test, eq, deepEq, fakeHome }) => {
       settings: [],
       blocks: [],
       modules: [],
+      disabledModules: [],
     });
     eq(manifest.emptyManifest("claude", undefined).version, "0.0.0");
     eq(manifest.emptyManifest("anything-else", "1.0.0").agent, "claude");
@@ -40,6 +41,7 @@ suite("installer/manifest", ({ test, eq, deepEq, fakeHome }) => {
       settings: [{ file: "settings.json", pointer: "/hooks/PreToolUse/0", mode: "enforce" }],
       blocks: [{ file: "CLAUDE.md", marker: "softela-ai" }],
       modules: ["memory-as-context"],
+      disabledModules: ["reply-language"],
     };
     manifest.writeManifest("claude", written);
     deepEq(manifest.readManifest("claude"), written);
@@ -47,7 +49,15 @@ suite("installer/manifest", ({ test, eq, deepEq, fakeHome }) => {
 
   test("readManifest defaults every non-files field for a malformed file", () => {
     const home = fakeHome();
-    writeJsonAtomic(manifestPath("claude"), { modules: "not-an-array", settings: "not-an-array", blocks: 5, version: 7, installedAt: 7, agent: "bogus" });
+    writeJsonAtomic(manifestPath("claude"), {
+      modules: "not-an-array",
+      disabledModules: "not-an-array",
+      settings: "not-an-array",
+      blocks: 5,
+      version: 7,
+      installedAt: 7,
+      agent: "bogus",
+    });
     deepEq(manifest.readManifest("claude"), {
       version: "0.0.0",
       installedAt: null,
@@ -56,8 +66,27 @@ suite("installer/manifest", ({ test, eq, deepEq, fakeHome }) => {
       settings: [],
       blocks: [],
       modules: [],
+      disabledModules: [],
     });
     eq(typeof home, "string");
+  });
+
+  test("readManifest treats a manifest written before disabledModules existed as recording no explicit disables", () => {
+    fakeHome();
+    // A manifest predating this field, as if written by an older version of
+    // this installer — no migration step, no rewrite on read; it is simply
+    // treated as an empty list, the same way every other field here defaults
+    // for a manifest that predates it.
+    writeJsonAtomic(manifestPath("claude"), {
+      version: "0.5.0",
+      installedAt: "2026-01-01T00:00:00.000Z",
+      agent: "claude",
+      files: {},
+      settings: [],
+      blocks: [],
+      modules: ["memory-as-context"],
+    });
+    deepEq(manifest.readManifest("claude").disabledModules, []);
   });
 
   test("readManifest treats a files map of the wrong JSON type as an unreadable manifest, not a silently wiped one", () => {

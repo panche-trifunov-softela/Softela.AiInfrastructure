@@ -270,6 +270,51 @@ function makeReadFile(cwd, git) {
 }
 
 /**
+ * Builds a sandboxed file-size lookup bound to a working directory and, when
+ * known, a git repository root — the same boundary {@link makeReadFile}
+ * anchors on, but answering "how many bytes is this file" without reading its
+ * content at all.
+ *
+ * `core/lib/write-decode.js`'s reconstruction budget used to learn a file's
+ * size only after `readFile` had already read the whole thing into memory, so
+ * a single existing tracked file far larger than the whole budget (a
+ * generated lockfile, a bundled asset, a large fixture) was read in full
+ * regardless of its own size — nothing could ask "how big is this" without
+ * paying for the read first. This answers exactly that question, with a
+ * plain `fs.statSync` rather than a full read, so a reconstruction path can
+ * charge a file's own size against the budget BEFORE deciding whether to read
+ * it at all.
+ *
+ * @param {string} cwd The working directory a relative path resolves
+ * against.
+ * @param {{repoRoot: string | null}} git The lazy git state; only its
+ * `repoRoot` getter is touched, and only on an actual stat.
+ * @returns {(p: string) => number | null} A stat that refuses to escape the
+ * boundary — including through a symlink or directory junction whose own path
+ * lives inside the boundary but resolves outside it — and returns `null`
+ * rather than throwing for a missing path, a directory, a path that cannot be
+ * stat'd, or an escape attempt, mirroring {@link makeReadFile}'s own
+ * fail-toward-"cannot answer" behaviour exactly rather than a second, looser
+ * path resolution.
+ */
+function makeStatFile(cwd, git) {
+  return function statFile(p) {
+    try {
+      if (typeof p !== "string" || !p) return null;
+      const target = path.isAbsolute(p) ? p : path.resolve(cwd, p);
+      const boundary = git.repoRoot || cwd;
+      if (!withinBoundary(target, boundary)) return null;
+      if (!withinBoundaryResolved(target, boundary)) return null;
+      const stat = fs.statSync(target);
+      if (!stat.isFile()) return null;
+      return stat.size;
+    } catch {
+      return null;
+    }
+  };
+}
+
+/**
  * Builds a sandboxed existence check bound to a working directory and, when
  * known, a git repository root — the same boundary {@link makeReadFile}
  * anchors on, but answering "is anything there at all" instead of "what does
@@ -417,6 +462,7 @@ function emptyContext() {
     overrides: { forRule: () => ({ action: undefined, allow: [], reason: undefined }), invalid: [], raw: null },
     raw: {},
     readFile: () => null,
+    statFile: () => null,
   });
 }
 
@@ -530,6 +576,7 @@ function buildContext(payload, options = {}) {
       overrides,
       raw: p,
       readFile: makeReadFile(cwd, git),
+      statFile: makeStatFile(cwd, git),
     });
   } catch {
     return emptyContext();
@@ -544,7 +591,11 @@ function buildContext(payload, options = {}) {
 // dispatch-core.js#evaluateDecodedWrites` builds a repo-root-anchored
 // existence checker the same way it already builds a repo-root-anchored
 // reader, for `core/lib/write-decode.js`'s own header-path invariant.
+// `makeStatFile` is exported for the same reason again, one level further:
+// `evaluateDecodedWrites` builds a repo-root-anchored size lookup the same
+// way, so `core/lib/write-decode.js#applyHunksToFile` can charge a file's own
+// size against its reconstruction budget before reading it at all.
 // `resolveFilePath` is exported for the matching reason: `buildWriteContext`
 // resolves a decoded write's own path against the right anchor without a
 // second copy of this logic.
-module.exports = { buildContext, makeReadFile, makeFileExists, makeWithinReach, resolveFilePath };
+module.exports = { buildContext, makeReadFile, makeFileExists, makeStatFile, makeWithinReach, resolveFilePath };

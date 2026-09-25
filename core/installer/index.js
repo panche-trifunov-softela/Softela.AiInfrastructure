@@ -1002,6 +1002,43 @@ function summarizeTierFallbacks(actions) {
 }
 
 /**
+ * Builds one printed line per module {@link resolveModuleSelection} turned
+ * on automatically this run because it ships `defaultEnabled: true` and was
+ * not already enabled or explicitly disabled. Printed unconditionally,
+ * independent of `--verbose`: a module newly reaching enforcement (new
+ * hooks, a new MCP server, new instructions) is a change nobody should have
+ * to pass a flag to see.
+ *
+ * @param {string[]} newlyEnabledModules Ids {@link resolveModuleSelection}
+ * newly enabled this run, as `runInstallOrUpdate`'s own result carries them.
+ * @returns {string[]} One line per newly-enabled module; empty when none.
+ */
+function summarizeNewlyEnabledModules(newlyEnabledModules) {
+  return newlyEnabledModules.map((id) => `module "${id}" enabled by default (new since this agent was last configured)`);
+}
+
+/**
+ * Builds one printed line per `defaultEnabled` module {@link
+ * resolveModuleSelection} left off this run because one of its declared
+ * `requires` is disabled or was never enabled. Printed unconditionally, the
+ * same as {@link summarizeNewlyEnabledModules}: silently skipping a module
+ * the repository ships as on-by-default is exactly the outcome this reports
+ * instead of hiding, without failing the run over it.
+ *
+ * @param {{id: string, missing: string[]}[]} requiresBlockedModules Every
+ * blocked module, as `resolveModuleSelection` returns it.
+ * @returns {string[]} One line per blocked module; empty when none.
+ */
+function summarizeRequiresBlockedModules(requiresBlockedModules) {
+  return requiresBlockedModules.map(
+    (b) =>
+      `module "${b.id}" is enabled by default but was not turned on — it requires ${b.missing.map((id) => `"${id}"`).join(", ")}, which ${
+        b.missing.length > 1 ? "are" : "is"
+      } disabled or not enabled`,
+  );
+}
+
+/**
  * Decides whether a plan has anything actionable in it at all.
  *
  * @param {object[]} actions The plan.
@@ -1036,18 +1073,51 @@ function planIsEmpty(actions) {
  * ordering is never actually contested — and above the shipped-default and
  * stored-state fallbacks, since an answer the developer was just asked for
  * must win over both.
- * @returns {{ids: string[], unknown: string[]}} `ids` is the resolved
- * enabled set; `unknown` lists any requested id this repository does not
- * ship.
+ * @param {string[]} [disabledIds] Module ids the developer explicitly
+ * disabled — the manifest's own `disabledModules`
+ * (`manifest.js#readManifest`). Consulted only by the two fallbacks below
+ * (a brand-new install, and an ordinary re-run with no explicit override);
+ * every earlier branch is the developer's own explicit choice for this run
+ * and already overrides whatever the disabled record says, the same way it
+ * overrides the stored state.
+ * @returns {{ids: string[], unknown: string[], newlyEnabled: string[],
+ * blocked: {id: string, missing: string[]}[], implicitlyDisabled: string[]}}
+ * `ids` is the resolved enabled set; `unknown` lists any requested id this
+ * repository does not ship; `newlyEnabled` lists every `defaultEnabled`
+ * module this call turned on that was not already in `priorState.modules` —
+ * always empty except from the ordinary-re-run fallback, since every earlier
+ * branch is the developer's own explicit choice, never an automatic one;
+ * `blocked` lists every `defaultEnabled` module the same fallback left off
+ * because one of its declared `requires` is neither already enabled nor
+ * being newly enabled this same run — disabled, or never enabled — each
+ * entry naming the missing dependency ids; `implicitlyDisabled` lists every
+ * `defaultEnabled` module a `--modules` list or a confirmed interactive pick
+ * left out — the developer choosing a set is the developer turning off
+ * whatever it omits, on purpose, the same as `module disable` — so the
+ * caller must fold these into the manifest's own `disabledModules`, or a
+ * later re-run's fallback would silently sweep them back in.
  */
-function resolveModuleSelection(allModules, flags, priorState, mode, chosenIds) {
+function resolveModuleSelection(allModules, flags, priorState, mode, chosenIds, disabledIds) {
   const known = new Set(allModules.map((m) => m.id));
+  const empty = { newlyEnabled: [], blocked: [], implicitlyDisabled: [] };
+
+  /**
+   * Lists every `defaultEnabled` module an explicit selection left out — see
+   * `implicitlyDisabled` in this function's own `@returns`.
+   *
+   * @param {string[]} ids The developer's own explicit selection.
+   * @returns {string[]} The omitted `defaultEnabled` module ids.
+   */
+  const omittedDefaults = (ids) => {
+    const chosen = new Set(ids);
+    return allModules.filter((m) => m.json.defaultEnabled && !chosen.has(m.id)).map((m) => m.id);
+  };
 
   if (flags.__moduleOp && typeof flags.__moduleOp.id === "string") {
     const current = new Set(priorState.modules.filter((id) => known.has(id)));
     if (flags.__moduleOp.action === "enable") current.add(flags.__moduleOp.id);
     else current.delete(flags.__moduleOp.id);
-    return { ids: [...current], unknown: [] };
+    return { ids: [...current], unknown: [], ...empty };
   }
 
   if (typeof flags.modules === "string") {
@@ -1055,18 +1125,70 @@ function resolveModuleSelection(allModules, flags, priorState, mode, chosenIds) 
       .split(",")
       .map((s) => s.trim())
       .filter(Boolean);
-    return { ids: requested.filter((id) => known.has(id)), unknown: requested.filter((id) => !known.has(id)) };
+    const ids = requested.filter((id) => known.has(id));
+    return { ids, unknown: requested.filter((id) => !known.has(id)), newlyEnabled: [], blocked: [], implicitlyDisabled: omittedDefaults(ids) };
   }
 
   if (Array.isArray(chosenIds)) {
-    return { ids: chosenIds.filter((id) => known.has(id)), unknown: chosenIds.filter((id) => !known.has(id)) };
+    const ids = chosenIds.filter((id) => known.has(id));
+    return { ids, unknown: chosenIds.filter((id) => !known.has(id)), newlyEnabled: [], blocked: [], implicitlyDisabled: omittedDefaults(ids) };
   }
+
+  const disabled = new Set(Array.isArray(disabledIds) ? disabledIds : []);
 
   if (mode === "install" && (!priorState.modules || priorState.modules.length === 0)) {
-    return { ids: allModules.filter((m) => m.json.defaultEnabled).map((m) => m.id), unknown: [] };
+    return {
+      ids: allModules.filter((m) => m.json.defaultEnabled && !disabled.has(m.id)).map((m) => m.id),
+      unknown: [],
+      ...empty,
+    };
   }
 
-  return { ids: priorState.modules.filter((id) => known.has(id)), unknown: [] };
+  // An ordinary re-run — `update`, or `install` repeated on an
+  // already-configured agent — keeps everything already enabled and turns
+  // on every `defaultEnabled` module that either did not exist, or was
+  // never enabled, when this agent's module set was last resolved, unless
+  // the developer explicitly turned it off since. Without this, a module
+  // added to the repository after an agent's first install stays invisible
+  // to that agent forever: nothing here would otherwise distinguish "this
+  // module did not exist yet" from "the developer turned it off", since
+  // both look identical from `priorState.modules` alone — this is exactly
+  // the defect `disabledIds` exists to let this function tell apart.
+  const modulesById = new Map(allModules.map((m) => [m.id, m]));
+  const sortedIds = allModules.map((m) => m.id).sort((a, b) => a.localeCompare(b));
+  const enabled = new Set(priorState.modules.filter((id) => known.has(id)));
+  const newlyEnabled = [];
+
+  // Resolved to a fixed point, alphabetically, so a default module that
+  // itself requires another default module turned on in this very same pass
+  // is not skipped only because of scan order, and so the result is
+  // deterministic regardless of how the repository's own directory listing
+  // happens to be ordered on disk.
+  for (let progressed = true; progressed; ) {
+    progressed = false;
+    for (const id of sortedIds) {
+      if (enabled.has(id) || disabled.has(id)) continue;
+      const mod = modulesById.get(id);
+      if (!mod.json.defaultEnabled) continue;
+      const requires = Array.isArray(mod.json.requires) ? mod.json.requires : [];
+      if (requires.some((reqId) => !enabled.has(reqId))) continue;
+      enabled.add(id);
+      newlyEnabled.push(id);
+      progressed = true;
+    }
+  }
+
+  const blocked = [];
+  for (const id of sortedIds) {
+    if (enabled.has(id) || disabled.has(id)) continue;
+    const mod = modulesById.get(id);
+    if (!mod.json.defaultEnabled) continue;
+    const requires = Array.isArray(mod.json.requires) ? mod.json.requires : [];
+    const missing = requires.filter((reqId) => !enabled.has(reqId));
+    if (missing.length) blocked.push({ id, missing });
+  }
+
+  return { ids: [...enabled], unknown: [], newlyEnabled, blocked, implicitlyDisabled: [] };
 }
 
 /**
@@ -2555,12 +2677,42 @@ function runInstallOrUpdate(mode, flags, answers = {}) {
     const result = manifestStore.withLock(agent, () => {
       const allModules = detect.discoverModules();
       const priorState = stateStore.readState(agent);
+      const priorManifest = manifestStore.readManifest(agent);
+      const priorDisabled = (priorManifest && priorManifest.disabledModules) || [];
       const agentAnswers = answers[agent];
+
+      // `module enable`/`disable` (via `flags.__moduleOp`) is the only
+      // caller that ever changes the disabled record; every other run keeps
+      // it exactly as the manifest already had it, so a module the
+      // developer never touched cannot silently leave or re-enter it.
+      let disabledIds = priorDisabled;
+      if (flags.__moduleOp && typeof flags.__moduleOp.id === "string") {
+        const disabledSet = new Set(priorDisabled);
+        if (flags.__moduleOp.action === "disable") disabledSet.add(flags.__moduleOp.id);
+        else disabledSet.delete(flags.__moduleOp.id);
+        disabledIds = [...disabledSet];
+      }
+
       // The interactively-collected module selection is resolved against
       // `priorState` inside this same locked critical section it was read
       // in, not against the snapshot `collectInteractiveAnswers` read before
       // the lock — see `resolveModuleSelection`'s own doc comment.
-      const selection = resolveModuleSelection(allModules, flags, priorState, mode, agentAnswers && agentAnswers.modules);
+      const selection = resolveModuleSelection(allModules, flags, priorState, mode, agentAnswers && agentAnswers.modules, disabledIds);
+
+      // An explicit `--modules` list or a confirmed interactive pick is the
+      // developer choosing a set — whatever `defaultEnabled` module it
+      // leaves out is being turned off on purpose, the same as `module
+      // disable`, not merely "not mentioned". Recorded into the disabled set
+      // this same run persists, so a later re-run's own fallback (below,
+      // inside `resolveModuleSelection`) never sweeps it back in — while a
+      // module that does not exist yet at the time of this choice is simply
+      // absent from `allModules` and so never added here, and still reaches
+      // the agent whenever it ships.
+      if (selection.implicitlyDisabled.length) {
+        const disabledSet = new Set(disabledIds);
+        for (const id of selection.implicitlyDisabled) disabledSet.add(id);
+        disabledIds = [...disabledSet];
+      }
       // Folded in BEFORE gather/plan, not only before the state.json write, so
       // a first-run flag such as `--memory-location` or `--reply-language` —
       // or an interactively-collected answer from `collectInteractiveAnswers`
@@ -2598,6 +2750,8 @@ function runInstallOrUpdate(mode, flags, answers = {}) {
           empty: true,
           applied: null,
           unknownModules: selection.unknown,
+          newlyEnabledModules: [],
+          requiresBlockedModules: [],
           home: ctx.home,
           codexTrustCaveat: null,
           areaWarnings: [],
@@ -2620,10 +2774,18 @@ function runInstallOrUpdate(mode, flags, answers = {}) {
       const areaWarnings = summarizeAreaWarnings(actions);
       const configErrors = summarizeConfigErrors(actions);
       const tierFallbacks = summarizeTierFallbacks(actions);
+      const disabledChanged = JSON.stringify(disabledIds) !== JSON.stringify(priorDisabled);
 
       let applied = null;
       if (!flags["dry-run"] && !empty) {
         applied = apply.applyPlan(actions, ctx);
+        // `apply.js#buildManifest` has no notion of the disabled-module
+        // record — it only ever built `modules` — so it is folded in here,
+        // onto the manifest object it just produced, before that manifest
+        // reaches disk. Skipping this would silently drop every explicit
+        // disable back to "none recorded" the next time anything else about
+        // this agent changed.
+        applied.manifest.disabledModules = disabledIds;
         manifestStore.writeManifest(agent, applied.manifest);
         stateStore.writeState(agent, newState);
         // Written at install and update time so `readVersion` can fall back to
@@ -2633,6 +2795,15 @@ function runInstallOrUpdate(mode, flags, answers = {}) {
       } else if (!flags["dry-run"]) {
         // Nothing actionable, but a module selection may still be new to record.
         stateStore.writeState(agent, newState);
+        // `module disable`/`enable` on a module with no installed footprint
+        // (nothing to add or remove on disk) still leaves the plan empty —
+        // the disabled record must still reach the manifest, or the command
+        // is a silent no-op. Only written when it actually changed, and only
+        // when a manifest already exists to patch (a module never installed
+        // at all has no manifest for this to update yet).
+        if (disabledChanged && priorManifest) {
+          manifestStore.writeManifest(agent, { ...priorManifest, disabledModules: disabledIds });
+        }
       }
 
       return {
@@ -2641,6 +2812,8 @@ function runInstallOrUpdate(mode, flags, answers = {}) {
         empty,
         applied,
         unknownModules: selection.unknown,
+        newlyEnabledModules: selection.newlyEnabled,
+        requiresBlockedModules: selection.blocked,
         home: ctx.home,
         codexTrustCaveat,
         areaWarnings,
@@ -2653,7 +2826,7 @@ function runInstallOrUpdate(mode, flags, answers = {}) {
       };
     });
 
-    if (!result.empty) anyChange = true;
+    if (!result.empty || result.newlyEnabledModules.length) anyChange = true;
     if (result.configErrors.length) anyError = true;
     if (result.applied && result.applied.report.errors.length) anyError = true;
     if (result.blockedByConflicts) anyError = true;
@@ -2688,6 +2861,11 @@ function printInstallOrUpdate(mode, out, flags) {
       continue;
     }
     if (a.unknownModules.length) console.log(`  unknown module(s) ignored: ${a.unknownModules.join(", ")}`);
+    // A newly-enabled or requires-blocked default module is a change in
+    // enforcement (or a change withheld), never a silent one — printed
+    // regardless of --verbose, the same principle as the warnings below.
+    for (const line of summarizeNewlyEnabledModules(a.newlyEnabledModules)) console.log(`  ${line}`);
+    for (const line of summarizeRequiresBlockedModules(a.requiresBlockedModules)) console.log(`  NOTE: ${line}`);
     const lines = renderPlan(a.actions, a.home, !!flags.verbose, width);
     if (!lines.length) console.log("  (nothing to do)");
     else for (const line of lines) console.log(line);
@@ -3472,5 +3650,6 @@ module.exports = {
   FLAG_DEFS,
   validateFlags,
   moduleRequiresClosure,
+  resolveModuleSelection,
   loadReplyLanguageCatalogue,
 };

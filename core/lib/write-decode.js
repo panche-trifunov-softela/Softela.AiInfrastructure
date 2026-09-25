@@ -52,6 +52,16 @@
  * `null`. See `adapters/shared/dispatch-core.js#evaluateDecodedWrites` for
  * how the two readers are built.
  *
+ * A STAT capability follows the same `"cwd"`/`"repoRoot"` split, one level
+ * up: `options.statFileRepoRoot` (defaulting to `options.statFile` when
+ * omitted, exactly like `readFileRepoRoot` defaults to `readFile`) answers a
+ * path's own byte size without reading it, so `applyHunksToFile` can charge
+ * an UPDATE section's existing file against the reconstruction budget before
+ * ever reading it — see that function's own doc comment for why this matters
+ * (a single existing tracked file bigger than the whole budget used to be
+ * read into memory in full regardless of its own size) and for exactly what
+ * happens when no stat capability is supplied at all.
+ *
  * Also, an edit-shaped entry (`Edit`, `MultiEdit`) carries `insertedText`:
  * the text the write actually inserts, as opposed to `content`, which this
  * module always reconstructs as the whole resulting file. The caller keeps
@@ -137,20 +147,47 @@ function stripTrailingCR(line) {
  * content for (applying hunks, or copying a direct `content` field), before
  * every remaining file falls back to path-only decoding (`content: null`).
  * A path-only entry still fires a path rule (folder shape, protected paths);
- * only a content rule goes quiet for the files past this ceiling. Chosen
- * generously above any patch this repository has ever observed in practice,
- * while still keeping a pathological multi-hundred-file patch's decode well
- * inside the 5-second `PreToolUse` hook timeout Claude Code enforces
- * silently — a hook that runs past it is simply treated as having enforced
- * nothing, exactly the failure this whole module exists to end.
+ * only a content rule goes quiet for the files past this ceiling — and a
+ * content rule going quiet is not a partial answer, it is the rule returning
+ * `pass` on a write it never actually looked at. 800 was tight enough that a
+ * large, entirely legitimate multi-file patch (a rename sweep, a generated
+ * barrel update touching every folder) could run past it and go unreviewed
+ * by every content-based rule for no reason connected to any real cost.
+ *
+ * Raised further, to 5000, against a real measurement rather than another
+ * guess: 5000 files (an `add`-file patch, and separately 5000 `update`
+ * sections each reconstructed against 10 KB of realistic existing content)
+ * decode in 24-25 ms on this machine — indistinguishable from noise next to
+ * the real `HOOK_TIMEOUT_SECONDS` budget both hosts actually enforce on
+ * every hook registration (`core/installer/plan.js`, 30 seconds). A hook
+ * that runs past its timeout is simply treated as having enforced nothing,
+ * exactly the failure this whole module exists to end — so headroom this
+ * cheap is free to take.
  */
-const MAX_RECONSTRUCT_FILES = 200;
+const MAX_RECONSTRUCT_FILES = 5000;
 
 /**
  * The most combined bytes of hunk/content text a single decode pass will
  * reconstruct across every file, protecting against a small number of very
  * large files that {@link MAX_RECONSTRUCT_FILES} alone would not catch —
- * the same 5-second hook budget, guarded from the other direction.
+ * the same `HOOK_TIMEOUT_SECONDS` hook budget, guarded from the other
+ * direction. Once this ceiling is crossed, every remaining file in the pass
+ * degrades to path-only decoding: not a smaller answer, but a content rule
+ * silently returning `pass` on a write it never actually inspected. 8 MB let
+ * an ordinary large-but-legitimate tracked file (a generated lockfile, a
+ * bundled asset, a sizeable data fixture) exhaust the budget on its own and
+ * blind every content rule to whatever else the same call touched.
+ *
+ * Raised to 64 MB against a real measurement: the expensive path this
+ * ceiling actually guards — {@link applyHunksToFile}'s UPDATE reconstruction,
+ * reading, splitting and searching an already-large existing file — cost
+ * 419 ms at 64 MB on this machine, next to nothing against the real
+ * `HOOK_TIMEOUT_SECONDS` budget both hosts actually enforce on every hook
+ * registration (`core/installer/plan.js`, 30 seconds). A hook that runs
+ * past its timeout is simply treated as having enforced nothing, exactly the
+ * failure this whole module exists to end — so this class of file no longer
+ * starves the rest of the pass for a fraction of the budget it can safely
+ * spend.
  *
  * Charged on the REAL bytes a reconstruction step actually works with, not
  * on the hunk's own added/removed line text: for {@link applyHunksToFile}
@@ -162,7 +199,7 @@ const MAX_RECONSTRUCT_FILES = 200;
  * real cost (there is no existing file to read), so they keep charging their
  * own content length directly.
  */
-const MAX_RECONSTRUCT_BYTES = 2_000_000;
+const MAX_RECONSTRUCT_BYTES = 64_000_000;
 
 /**
  * Builds a per-decode-call budget that gates how much reconstruction work
@@ -173,7 +210,7 @@ const MAX_RECONSTRUCT_BYTES = 2_000_000;
  * @returns {{
  *   take: (estimatedBytes: number) => boolean,
  *   reserve: () => boolean,
- *   chargeBytes: (n: number) => void,
+ *   chargeBytes: (n: number) => boolean,
  * }} `take` records one more file's worth of reconstruction work, in one
  * step, when its size is already known up front (an `add` section's own
  * added text, a `changes` entry's own direct content) and reports whether it
@@ -183,9 +220,14 @@ const MAX_RECONSTRUCT_BYTES = 2_000_000;
  * of this file are read — so a file past an already-exhausted budget is
  * skipped before its own `readFile` call, not after — and `chargeBytes`
  * records the file's real size once it is known, so the NEXT file's
- * `reserve` call sees the true cumulative cost. Every method keeps returning
- * `false` (or a no-op, for `chargeBytes`) once the ceiling is crossed, for
- * the rest of this decode pass.
+ * `reserve` call sees the true cumulative cost. `chargeBytes` ALSO reports
+ * whether the pass is still within budget immediately after recording this
+ * file's own bytes — the caller ({@link applyHunksToFile}) uses that return
+ * value to stop working on THIS SAME file the moment its own size alone (or
+ * combined with what came before it) is already too much, rather than only
+ * ever finding out via the next file's `reserve` call. Every method keeps
+ * returning `false` once the ceiling is crossed, for the rest of this decode
+ * pass.
  */
 function createReconstructBudget() {
   let files = 0;
@@ -205,6 +247,7 @@ function createReconstructBudget() {
     },
     chargeBytes(n) {
       bytes += Math.max(0, n || 0);
+      return !overBudget();
     },
   };
 }
@@ -646,7 +689,8 @@ function parsePatchSections(body, pathExists, withinReach = () => true) {
  * Implemented as a single joined-string `indexOf` rather than a nested
  * per-line comparison loop: a naive line-by-line scan is O(lines × search
  * length) in the worst case, which is exactly what let a large file or patch
- * blow through the 5-second `PreToolUse` hook timeout before this fix. Every
+ * blow through the `PreToolUse` hook timeout (`HOOK_TIMEOUT_SECONDS` in
+ * `core/installer/plan.js`, 30 seconds) before this fix. Every
  * line is wrapped in its own leading/trailing `"\n"` in both the haystack and
  * the needle, so a match can only land on a real line boundary — a partial
  * match straddling two lines' worth of text is impossible by construction,
@@ -686,17 +730,26 @@ function findSubsequence(lines, search, fromIndex) {
  * @param {string} sourcePath The path to read the current content from.
  * @param {(p: string) => string | null} readFile Reads a file's current
  * content, `null` when it cannot be read.
- * @param {{reserve: () => boolean, chargeBytes: (n: number) => void}} budget
+ * @param {{reserve: () => boolean, chargeBytes: (n: number) => boolean}} budget
  * The shared reconstruction budget for this decode pass — see
- * {@link createReconstructBudget}. Charged on the size of `existing` once it
- * is actually read, not on the hunk's own diff text, since splitting and
- * searching a file costs proportional to the FILE's size regardless of how
- * small the diff against it is.
+ * {@link createReconstructBudget}. Charged on the size of `existing`, not on
+ * the hunk's own diff text, since splitting and searching a file costs
+ * proportional to the FILE's size regardless of how small the diff against
+ * it is — charged from `statFile` up front when it can answer, from the read
+ * itself otherwise (see below).
+ * @param {(p: string) => number | null} [statFile] Answers `sourcePath`'s own
+ * byte size WITHOUT reading its content, `null` when it cannot (no capability
+ * supplied at all, the file is missing, unreadable, a directory, or outside
+ * the caller's own sandboxed boundary) — see
+ * `core/lib/context.js#makeStatFile`. Optional so an older caller supplying
+ * only `readFile` keeps working exactly as before this parameter existed.
  * @returns {string | null} The resulting content, or `null` when the budget
- * was already spent, the file could not be read, or a hunk could not be
- * located or carries no context/removed lines to anchor it at all.
+ * was already spent, this file's OWN size alone was already too much for
+ * whatever remained of the budget, the file could not be read, or a hunk
+ * could not be located or carries no context/removed lines to anchor it at
+ * all.
  */
-function applyHunksToFile(hunks, sourcePath, readFile, budget) {
+function applyHunksToFile(hunks, sourcePath, readFile, budget, statFile) {
   // Checked BEFORE reading anything: once prior files in this same decode
   // pass have already charged the budget past its ceiling, this file's own
   // `readFile` call — and the split/search work that would follow it — is
@@ -704,9 +757,39 @@ function applyHunksToFile(hunks, sourcePath, readFile, budget) {
   // is only going to discard afterwards.
   if (!budget.reserve()) return null;
 
+  // THE GAP THIS CLOSES: `reserve()` above can only ever judge bytes charged
+  // by files reconstructed SO FAR — on its own it has no way to know THIS
+  // file's own size, so a single existing tracked file bigger than the
+  // entire byte budget (a generated lockfile, a bundled asset, a large data
+  // fixture — exactly the class MAX_RECONSTRUCT_BYTES's own doc comment
+  // names) used to sail past `reserve()` regardless of its own size, get read
+  // into memory in full by `readFile` below, and then be split, mapped,
+  // joined and searched in full with nothing left to stop it — only the NEXT
+  // file's own `reserve()` call ever saw the damage. Measured: a lone 200 MB
+  // existing file touched by a trivial two-line patch cost 1.28 seconds
+  // entirely outside the budget.
+  //
+  // `statFile` answers this without paying for a read at all: when it can
+  // (`knownSize` is a number), that size is charged against the budget RIGHT
+  // HERE, before `readFile` is ever called for this file — an oversized file
+  // now degrades to path-only decoding before its own read even starts,
+  // rather than after paying for it.
+  const knownSize = typeof statFile === "function" ? statFile(sourcePath) : null;
+  if (typeof knownSize === "number" && !budget.chargeBytes(knownSize)) return null;
+
   const existing = readFile(sourcePath);
   if (typeof existing !== "string") return null;
-  budget.chargeBytes(existing.length);
+
+  // Charged again here ONLY when the size was not already known up front —
+  // charging twice for the same file would double-count its bytes. This is
+  // exactly the post-read check this function had before `statFile` existed,
+  // kept as the fallback for a caller that supplies no stat capability at
+  // all, or for a file `statFile` itself could not answer for (gone by the
+  // time this runs, a permission failure, a symlink escaping the sandbox):
+  // the file has already been read in full by this point, same as it always
+  // was, so this is the last chance to stop the expensive per-line work below
+  // from running on a result the budget is only going to discard anyway.
+  if (knownSize === null && !budget.chargeBytes(existing.length)) return null;
 
   // Stripped the same way the patch's own lines are (`parsePatchSections`'s
   // own `stripTrailingCR`), so a hunk's context/removed lines compare fairly
@@ -763,10 +846,13 @@ function applyHunksToFile(hunks, sourcePath, readFile, budget) {
  * content, `null` when it cannot be read.
  * @param {{take: (n: number) => boolean}} budget The shared reconstruction
  * budget for this decode pass.
+ * @param {(p: string) => number | null} [statFile] Forwarded to
+ * {@link applyHunksToFile} for an `"update"` section — see its own doc
+ * comment.
  * @returns {{path: string, content: string | null, kind: "add"|"update"|"delete", pathBase: "repoRoot"}}
  * The reconstructed write.
  */
-function reconstructSection(section, readFile, budget) {
+function reconstructSection(section, readFile, budget, statFile) {
   if (section.action === "delete") {
     return { path: section.path, content: null, kind: "delete", pathBase: "repoRoot" };
   }
@@ -789,7 +875,7 @@ function reconstructSection(section, readFile, budget) {
     return { path: section.path, content: lines.join("\n"), kind: "add", pathBase: "repoRoot" };
   }
 
-  const content = applyHunksToFile(section.hunks, section.path, readFile, budget);
+  const content = applyHunksToFile(section.hunks, section.path, readFile, budget, statFile);
   return { path: section.path, content, kind: "update", pathBase: "repoRoot" };
 }
 
@@ -820,8 +906,17 @@ function reconstructSection(section, readFile, budget) {
  * @param {(p: string) => boolean} pathExists Checks whether a path exists on
  * disk, repo-root-anchored — forwarded to {@link parsePatchSections} for its
  * header-existence invariant.
- * @param {{take: (n: number) => boolean, reserve: () => boolean, chargeBytes: (n: number) => void}} budget
+ * @param {{take: (n: number) => boolean, reserve: () => boolean, chargeBytes: (n: number) => boolean}} budget
  * The shared reconstruction budget — see {@link createReconstructBudget}.
+ * @param {(p: string) => boolean} [withinReach] Forwarded to
+ * {@link parsePatchSections} — see its own doc comment.
+ * @param {(p: string) => number | null} [statFile] Answers a path's own byte
+ * size without reading it, repo-root-anchored the same way `readFile` is
+ * here — forwarded to every `"update"` section's own {@link applyHunksToFile}
+ * call (directly, and via {@link reconstructSection}) so an oversized
+ * existing file degrades to path-only decoding before it is ever read.
+ * Optional; `undefined` falls back to exactly today's read-then-check
+ * behaviour — see {@link applyHunksToFile}'s own doc comment.
  * @returns {{ambiguous: boolean, entries: Array<{path: string, content: string | null, kind: "add"|"update"|"delete", pathBase: "repoRoot"}>}}
  * `entries` holds one entry per file section in this body, two for a renamed
  * section (the old path as a `"delete"`, the new path as an `"add"` whose
@@ -831,7 +926,7 @@ function reconstructSection(section, readFile, budget) {
  * `entries` is always `[]` — the caller decides what an ambiguous body means
  * for the rest of whatever it is decoding.
  */
-function decodePatchBody(body, readFile, pathExists, budget, withinReach) {
+function decodePatchBody(body, readFile, pathExists, budget, withinReach, statFile) {
   const parsed = parsePatchSections(body, pathExists, withinReach);
   if (parsed.ambiguous) return { ambiguous: true, entries: [] };
 
@@ -839,11 +934,11 @@ function decodePatchBody(body, readFile, pathExists, budget, withinReach) {
   for (const section of parsed.sections) {
     if (section.moveTo) {
       entries.push({ path: section.path, content: null, kind: "delete", pathBase: "repoRoot" });
-      const content = applyHunksToFile(section.hunks, section.path, readFile, budget);
+      const content = applyHunksToFile(section.hunks, section.path, readFile, budget, statFile);
       entries.push({ path: section.moveTo, content, kind: "add", pathBase: "repoRoot" });
       continue;
     }
-    entries.push(reconstructSection(section, readFile, budget));
+    entries.push(reconstructSection(section, readFile, budget, statFile));
   }
   return { ambiguous: false, entries };
 }
@@ -876,12 +971,16 @@ function decodePatchBody(body, readFile, pathExists, budget, withinReach) {
  * @param {(p: string) => boolean} pathExists Checks whether a path exists on
  * disk, repo-root-anchored — forwarded to every block's own
  * {@link parsePatchSections} call for its header-existence invariant.
+ * @param {(p: string) => boolean} [withinReach] Forwarded to
+ * {@link decodePatchBody}.
+ * @param {(p: string) => number | null} [statFile] Forwarded to
+ * {@link decodePatchBody} — see {@link applyHunksToFile}'s own doc comment.
  * @returns {Array<{path: string, content: string | null, kind: "add"|"update"|"delete", pathBase: "repoRoot"}>}
  * One entry per file section found, two for a renamed section; `[]` when any
  * block's own parse came back ambiguous.
  */
-function decodePatchText(patchText, readFile, pathExists, withinReach) {
-  return decodePatchTextDetailed(patchText, readFile, pathExists, withinReach).entries;
+function decodePatchText(patchText, readFile, pathExists, withinReach, statFile) {
+  return decodePatchTextDetailed(patchText, readFile, pathExists, withinReach, statFile).entries;
 }
 
 /**
@@ -903,17 +1002,22 @@ function decodePatchText(patchText, readFile, pathExists, withinReach) {
  * content, `null` when it cannot be read.
  * @param {(p: string) => boolean} pathExists Checks whether a path exists on
  * disk, repo-root-anchored.
+ * @param {(p: string) => boolean} [withinReach] Forwarded to
+ * {@link decodePatchBody}.
+ * @param {(p: string) => number | null} [statFile] Forwarded to every block's
+ * own {@link decodePatchBody} call, sharing the one `budget` across the whole
+ * pass exactly as `readFile` already does.
  * @returns {{entries: Array<{path: string, content: string | null, kind: "add"|"update"|"delete", pathBase: "repoRoot"}>, ambiguous: boolean}}
  * `entries` is empty whenever `ambiguous` is `true`; an envelope carrying no
  * file section at all returns empty entries with `ambiguous: false`.
  */
-function decodePatchTextDetailed(patchText, readFile, pathExists, withinReach) {
+function decodePatchTextDetailed(patchText, readFile, pathExists, withinReach, statFile) {
   const results = [];
   const budget = createReconstructBudget();
   PATCH_BLOCK_RE.lastIndex = 0;
   let match;
   while ((match = PATCH_BLOCK_RE.exec(patchText))) {
-    const { ambiguous, entries } = decodePatchBody(match[1], readFile, pathExists, budget, withinReach);
+    const { ambiguous, entries } = decodePatchBody(match[1], readFile, pathExists, budget, withinReach, statFile);
     if (ambiguous) return { entries: [], ambiguous: true };
     results.push(...entries);
   }
@@ -1042,12 +1146,21 @@ function decodeChanges(changes, readFile, budget) {
  * `"repoRoot"`-relative path exists on disk at all — forwarded to
  * {@link decodePatchText} for `parsePatchSections`'s own header-existence
  * invariant; irrelevant to the other two shapes.
+ * @param {(p: string) => boolean} [withinReachRepoRoot] Forwarded to
+ * {@link decodePatchText}.
+ * @param {(p: string) => number | null} [statFileRepoRoot] Answers a
+ * `"repoRoot"`-relative path's own byte size without reading it — forwarded
+ * to {@link decodePatchText} for an `"update"` section's own
+ * {@link applyHunksToFile} call; irrelevant to the other two shapes, neither
+ * of which reads an existing file to reconstruct one it does not already
+ * have the full content for.
  * @returns {Array<{path: string, content: string | null, kind: "add"|"update"|"delete"}>}
  * One entry per file the call touches; `[]` when none of the three shapes
  * matches at all.
  */
-function decodeApplyPatch(inp, readFile, readFileRepoRoot, pathExistsRepoRoot, withinReachRepoRoot) {
-  return decodeApplyPatchDetailed(inp, readFile, readFileRepoRoot, pathExistsRepoRoot, withinReachRepoRoot).entries;
+function decodeApplyPatch(inp, readFile, readFileRepoRoot, pathExistsRepoRoot, withinReachRepoRoot, statFileRepoRoot) {
+  return decodeApplyPatchDetailed(inp, readFile, readFileRepoRoot, pathExistsRepoRoot, withinReachRepoRoot, statFileRepoRoot)
+    .entries;
 }
 
 /**
@@ -1061,17 +1174,21 @@ function decodeApplyPatch(inp, readFile, readFileRepoRoot, pathExistsRepoRoot, w
  * `"repoRoot"`-relative path's current content.
  * @param {(p: string) => boolean} pathExistsRepoRoot Existence check for a
  * `"repoRoot"`-relative path.
+ * @param {(p: string) => boolean} [withinReachRepoRoot] Forwarded to
+ * {@link decodePatchTextDetailed}.
+ * @param {(p: string) => number | null} [statFileRepoRoot] Forwarded to
+ * {@link decodePatchTextDetailed}.
  * @returns {{entries: Array<{path: string, content: string | null, kind: "add"|"update"|"delete"}>, ambiguous: boolean}}
  * `ambiguous` is only ever `true` for the patch-envelope shape; the direct
  * and `changes` shapes have no ambiguous state of their own.
  */
-function decodeApplyPatchDetailed(inp, readFile, readFileRepoRoot, pathExistsRepoRoot, withinReachRepoRoot) {
+function decodeApplyPatchDetailed(inp, readFile, readFileRepoRoot, pathExistsRepoRoot, withinReachRepoRoot, statFileRepoRoot) {
   const direct = decodeFullReplace(inp, readFile);
   if (direct.length) return { entries: direct, ambiguous: false };
 
   const patchText = firstDefinedString(inp.input, inp.patch, pickPatchCommand(inp));
   if (patchText !== null && patchText.indexOf("*** Begin Patch") !== -1) {
-    return decodePatchTextDetailed(patchText, readFileRepoRoot, pathExistsRepoRoot, withinReachRepoRoot);
+    return decodePatchTextDetailed(patchText, readFileRepoRoot, pathExistsRepoRoot, withinReachRepoRoot, statFileRepoRoot);
   }
 
   if (inp.changes !== undefined) {
@@ -1090,6 +1207,8 @@ function decodeApplyPatchDetailed(inp, readFile, readFileRepoRoot, pathExistsRep
  *   readFile?: (p: string) => string | null,
  *   readFileRepoRoot?: (p: string) => string | null,
  *   pathExistsRepoRoot?: (p: string) => boolean,
+ *   statFile?: (p: string) => number | null,
+ *   statFileRepoRoot?: (p: string) => number | null,
  * }} [options] `readFile` reads a `"cwd"`-tagged path's current content —
  * every shape except a patch-envelope-parsed path (`Write`, `Edit`,
  * `MultiEdit`, `NotebookEdit`, `apply_patch`'s direct `{file_path, content}`
@@ -1112,10 +1231,19 @@ function decodeApplyPatchDetailed(inp, readFile, readFileRepoRoot, pathExistsRep
  * merely could not read. The real dispatcher
  * (`adapters/shared/dispatch-core.js#evaluateDecodedWrites`) always supplies
  * a real one instead, built from `core/lib/context.js#makeFileExists`, which
- * does not have that blind spot. Neither reader nor the existence check is
- * ever called by this module for a path it was not built to resolve — see
- * this module's own top-of-file doc block on `pathBase` for which shape uses
- * which.
+ * does not have that blind spot. `statFile`/`statFileRepoRoot` mirror
+ * `readFile`/`readFileRepoRoot`'s own `"cwd"`/`"repoRoot"` split — answering a
+ * path's own byte size without reading it, for an `"update"` patch section's
+ * own `applyHunksToFile` call to charge against the reconstruction budget
+ * before it ever reads the file — `statFileRepoRoot` defaults to `statFile`
+ * itself when omitted, the same fallback `readFileRepoRoot` gets. Neither is
+ * required: a caller that supplies no stat capability at all (every
+ * pre-existing test fixture, and `core/lib/codex-exec.js`'s own nested
+ * `apply_patch` path) falls back to exactly the read-then-check behaviour
+ * this module always had — see `applyHunksToFile`'s own doc comment. Neither
+ * reader, existence check, nor stat is ever called by this module for a path
+ * it was not built to resolve — see this module's own top-of-file doc block
+ * on `pathBase` for which shape uses which.
  * @returns {Array<{path: string, content: string | null, kind: "add"|"update"|"delete", pathBase: "cwd"|"repoRoot", insertedText?: string}>}
  * One entry per file the call writes. `[]` when `toolName` matches none of
  * the shapes this module decodes, or the payload's own shape inside a
@@ -1143,6 +1271,8 @@ function decodeWrites(toolName, input, options) {
  *   readFile?: (p: string) => string | null,
  *   readFileRepoRoot?: (p: string) => string | null,
  *   pathExistsRepoRoot?: (p: string) => boolean,
+ *   statFile?: (p: string) => number | null,
+ *   statFileRepoRoot?: (p: string) => number | null,
  * }} [options] Exactly as {@link decodeWrites} documents them.
  * @returns {{writes: Array<{path: string, content: string | null, kind: "add"|"update"|"delete", pathBase: "cwd"|"repoRoot", insertedText?: string}>, ambiguous: boolean}}
  * `ambiguous` is only ever `true` for an `apply_patch` envelope; every other
@@ -1156,6 +1286,8 @@ function decodeWritesDetailed(toolName, input, options) {
   const pathExistsRepoRoot =
     typeof opts.pathExistsRepoRoot === "function" ? opts.pathExistsRepoRoot : (p) => readFileRepoRoot(p) !== null;
   const withinReachRepoRoot = typeof opts.withinReachRepoRoot === "function" ? opts.withinReachRepoRoot : () => true;
+  const statFile = typeof opts.statFile === "function" ? opts.statFile : undefined;
+  const statFileRepoRoot = typeof opts.statFileRepoRoot === "function" ? opts.statFileRepoRoot : statFile;
   const inp = input && typeof input === "object" ? input : {};
   const name = String(toolName || "").toLowerCase();
 
@@ -1164,7 +1296,14 @@ function decodeWritesDetailed(toolName, input, options) {
   if (name === "multiedit") return { writes: decodeMultiEdit(inp, readFile), ambiguous: false };
   if (name === "notebookedit") return { writes: decodeNotebookEdit(inp), ambiguous: false };
   if (name === "apply_patch") {
-    const { entries, ambiguous } = decodeApplyPatchDetailed(inp, readFile, readFileRepoRoot, pathExistsRepoRoot, withinReachRepoRoot);
+    const { entries, ambiguous } = decodeApplyPatchDetailed(
+      inp,
+      readFile,
+      readFileRepoRoot,
+      pathExistsRepoRoot,
+      withinReachRepoRoot,
+      statFileRepoRoot,
+    );
     return { writes: entries, ambiguous };
   }
   return { writes: [], ambiguous: false };
@@ -1186,4 +1325,5 @@ module.exports = {
   decodePatchBody,
   createReconstructBudget,
   KNOWN_PATCH_MARKERS,
+  MAX_RECONSTRUCT_BYTES,
 };

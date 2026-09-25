@@ -392,20 +392,21 @@ suite("lib/shell-parse", ({ test, eq, ok, deepEq }) => {
   /* ---------------------------------------- splitStatements: size bound */
 
   test("splitStatements still unwraps a nested shell just under the size threshold", () => {
-    // 256 KiB minus generous headroom for the wrapper text itself, so the
+    // MAX_COMMAND_LENGTH_FOR_UNWRAP is 4 MiB (4 * 1024 * 1024); this pads to
+    // 4090 KiB, leaving generous headroom for the wrapper text itself so the
     // total command length stays under the bound.
-    const padding = "a".repeat(250 * 1024);
+    const padding = "a".repeat(4090 * 1024);
     const command = `echo "${padding}"; bash -c "git push origin dev-ng"`;
-    ok(command.length < 256 * 1024, "fixture must stay under the threshold");
+    ok(command.length < 4 * 1024 * 1024, "fixture must stay under the threshold");
     const got = splitStatements(command);
     ok(got.includes('bash -c "git push origin dev-ng"'), "outer wrapped statement present");
     ok(got.includes("git push origin dev-ng"), "unwrapped inner statement still produced under the bound");
   });
 
   test("splitStatements skips nested-shell unwrapping once the command exceeds the size threshold, but still splits", () => {
-    const padding = "a".repeat(300 * 1024);
+    const padding = "a".repeat(4140 * 1024);
     const command = `echo "${padding}"; bash -c "git push origin dev-ng"`;
-    ok(command.length > 256 * 1024, "fixture must exceed the threshold");
+    ok(command.length > 4 * 1024 * 1024, "fixture must exceed the threshold");
     const got = splitStatements(command);
     ok(got.includes('bash -c "git push origin dev-ng"'), "raw separator split still runs, outer statement present");
     eq(
@@ -984,13 +985,13 @@ suite("lib/shell-parse", ({ test, eq, ok, deepEq }) => {
 
   test("splitStatements completes quickly on a very long, ordinary command line", () => {
     // ~188 KB of semicolon-joined statements, comfortably under
-    // MAX_COMMAND_LENGTH_FOR_UNWRAP, so the full boundary-and-nested-shell
-    // probe runs rather than the cheap separator-only fallback.
+    // MAX_COMMAND_LENGTH_FOR_UNWRAP (4 MiB), so the full boundary-and-nested-
+    // shell probe runs rather than the cheap separator-only fallback.
     const statements = [];
     for (let i = 0; i < 4500; i += 1) statements.push(`echo "step number ${i} of the long line"`);
     statements.push('bash -c "git push origin dev-ng"');
     const cmd = statements.join("; ");
-    ok(cmd.length < 256 * 1024, "fixture must stay under the unwrap size threshold");
+    ok(cmd.length < 4 * 1024 * 1024, "fixture must stay under the unwrap size threshold");
 
     const start = Date.now();
     const got = splitStatements(cmd);

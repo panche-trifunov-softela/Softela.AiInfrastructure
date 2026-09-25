@@ -14,7 +14,7 @@
 const path = require("path");
 const { readJson } = require("../../core/lib/fs-safe");
 const { stateDir } = require("../../core/lib/paths");
-const { buildContext, makeReadFile, makeFileExists, makeWithinReach, resolveFilePath } = require("../../core/lib/context");
+const { buildContext, makeReadFile, makeFileExists, makeStatFile, makeWithinReach, resolveFilePath } = require("../../core/lib/context");
 const engine = require("../../core/engine");
 const { severity } = require("../../core/lib/decision");
 const { readStdin, parsePayload } = require("../../core/lib/hook-stdin");
@@ -414,10 +414,20 @@ function buildWriteContext(ctx, write) {
  * outside the sandbox boundary) — see `core/lib/context.js#makeFileExists`'s
  * own doc comment for why the two must not be conflated.
  *
+ * The size lookup is anchored the same way again, for the matching reason:
+ * `ctx.statFile` is anchored on `ctx.cwd` (`core/lib/context.js#makeStatFile`)
+ * and is exactly right for a `"cwd"`-tagged decoded path, but a
+ * `"repoRoot"`-tagged path needs its OWN size answered against the
+ * repository root, not `cwd`, for the same reason `readFileRepoRoot` cannot
+ * be `ctx.readFile` reused — `core/lib/write-decode.js#applyHunksToFile`
+ * charges this size against its reconstruction budget before reading the
+ * file at all, so stat-ing the wrong directory would either miss a real
+ * oversized file entirely or wrongly gate an unrelated same-named one.
+ *
  * @param {object} ctx The evaluation context to anchor against — the outer
  * call's own `ctx` in both callers.
- * @returns {{readFileRepoRoot: (p: string) => string | null, pathExistsRepoRoot: (p: string) => boolean}}
- * The two repository-root-anchored functions.
+ * @returns {{readFileRepoRoot: (p: string) => string | null, pathExistsRepoRoot: (p: string) => boolean, withinReachRepoRoot: (p: string) => boolean, statFileRepoRoot: (p: string) => number | null}}
+ * The four repository-root-anchored functions.
  */
 function buildRepoRootReaders(ctx) {
   const readFileRepoRoot =
@@ -430,7 +440,9 @@ function buildRepoRootReaders(ctx) {
     ctx.git && ctx.git.repoRoot
       ? makeWithinReach(ctx.git.repoRoot, ctx.git)
       : makeWithinReach(ctx.cwd, ctx.git);
-  return { readFileRepoRoot, pathExistsRepoRoot, withinReachRepoRoot };
+  const statFileRepoRoot =
+    ctx.git && ctx.git.repoRoot ? makeStatFile(ctx.git.repoRoot, ctx.git) : ctx.statFile;
+  return { readFileRepoRoot, pathExistsRepoRoot, withinReachRepoRoot, statFileRepoRoot };
 }
 
 /**
@@ -456,13 +468,15 @@ function buildRepoRootReaders(ctx) {
  * shape this module cannot see into is exactly the failure it exists to end.
  */
 function evaluateDecodedWrites(ctx, options) {
-  const { readFileRepoRoot, pathExistsRepoRoot, withinReachRepoRoot } = buildRepoRootReaders(ctx);
+  const { readFileRepoRoot, pathExistsRepoRoot, withinReachRepoRoot, statFileRepoRoot } = buildRepoRootReaders(ctx);
 
   const { writes, ambiguous } = decodeWritesDetailed(ctx.toolName, ctx.input, {
     readFile: ctx.readFile,
     readFileRepoRoot,
     pathExistsRepoRoot,
     withinReachRepoRoot,
+    statFile: ctx.statFile,
+    statFileRepoRoot,
   });
 
   if (!Array.isArray(writes) || writes.length === 0) {
