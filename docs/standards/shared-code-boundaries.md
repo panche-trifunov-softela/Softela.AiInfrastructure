@@ -119,6 +119,23 @@ move to a `utils.ts` beside it.
 its own types and utilities gets a folder of its own, rather than growing
 sideways inside one file.
 
+## The trigger is one file, one job — not a size crossed later
+
+Every example above is phrased as something a module "gets" once it has
+grown: a store's pure parts pulled out after the fact, a hook's own
+vocabulary of types split off once it exists. Read on its own, that reads
+as permission to wait for the growth before splitting anything.
+
+It is not. The trigger is the same one-file-one-job question, asked at the
+moment a store, a context or a root-level hook is created — does the first
+version already mix state, derivation and types in one place — not a line
+count crossed afterwards.
+[`migration-approach.md`](./migration-approach.md#phase-1-new-code-only)
+already states this directly: every new component, store, hook and service
+that needs more than one file follows the pattern from day one. A module
+written flat and split apart later is a rewrite of something that could
+have been shaped correctly on its first pass, at no extra cost.
+
 ## Stores and API services keep their types at the root
 
 The colocation rule in [`component-structure.md`](./component-structure.md)

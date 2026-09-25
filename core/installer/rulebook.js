@@ -429,11 +429,15 @@ function buildCleanCodeSection() {
     "## Write it as blocks, not as one piece",
     "",
     para(
-      "**DRY, SOLID, KISS — by those names.** No guard enforces this " +
-        "section and none is coming: the codebase is mid-migration and a " +
-        "rule strict enough to catch mixing would fire on the very files " +
-        "nobody has been given time to fix. It is judgement, and it is " +
-        "expected of you anyway, on backend and frontend alike.",
+      "**DRY, SOLID, KISS — by those names.** Two advisory guards check " +
+        "the most mechanical parts of this section on new frontend code — " +
+        "`code-block-spacing` (a blank line between multi-line statements) " +
+        "and `module-file-shape` (a new module that mixes type or constant " +
+        "declarations with logic) — and both only ask, never block. The " +
+        "rest stays judgement: the codebase is mid-migration, and a rule " +
+        "strict enough to catch mixing would fire on the very files nobody " +
+        "has been given time to fix. It is expected of you anyway, on " +
+        "backend and frontend alike.",
     ),
     "",
     para(

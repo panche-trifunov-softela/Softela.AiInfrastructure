@@ -1,7 +1,7 @@
 # Clean code, in any language
 
 Status: Active — a standing recommendation, deliberately not enforced by a
-guard.
+guard, with one exception noted below.
 
 Everything else in this directory is about frontend structure, and most of it
 is mechanical: a guard can tell whether a component lives in its own folder.
@@ -132,9 +132,64 @@ _dbContext.RemoveRange(targetRows);
 await _dbContext.SaveChangesAsync(cancellationToken);
 ```
 
+The same idea applies in TypeScript, and this is where most of the codebase
+this rulebook governs actually lives:
+
+```ts
+// Hard to scan: a derived value, a ref and an effect run together, and two
+// of the three span several lines.
+const orderSummary = useOrderSummary(orderId);
+const visibleItems = useMemo(
+  () => items.filter((item) => item.orderId === orderId),
+  [items, orderId],
+);
+const warnedRef = useRef(false);
+useEffect(() => {
+  if (orderSummary || warnedRef.current) return;
+  warnedRef.current = true;
+}, [orderSummary]);
+```
+
+```ts
+// The same declarations, each separated from the next.
+const orderSummary = useOrderSummary(orderId);
+
+const visibleItems = useMemo(
+  () => items.filter((item) => item.orderId === orderId),
+  [items, orderId],
+);
+
+const warnedRef = useRef(false);
+
+useEffect(() => {
+  if (orderSummary || warnedRef.current) return;
+  warnedRef.current = true;
+}, [orderSummary]);
+```
+
+A run of single-line declarations of the same kind is the case this does not
+cover, and it needs no separation — several `useState` calls one after
+another read perfectly well, because each is one line and each says the same
+kind of thing:
+
+```ts
+const [open, setOpen] = useState(false);
+const [value, setValue] = useState("");
+const [error, setError] = useState<Maybe<string>>(undefined);
+```
+
 Two things this is *not*: a blank line between every pair of statements,
 which removes the signal along with the noise; and a reason to reformat a
 file you are not otherwise changing.
+
+This one case is narrow enough to be checked mechanically, and a guard now
+does: a statement spanning more than one line gets a blank line separating
+it from its neighbours, while a run of single-line declarations of the same
+kind needs no separation between them. This does not contradict "Why this
+one is not a rule" above — whether a statement spans one line or several is
+a fact a guard can read directly off the code, unlike whether two files "do
+one job," so the judgement problem that keeps the rest of this document
+unenforced does not arise for this one, narrower case.
 
 ## Testing is the check on all of this
 
@@ -155,3 +210,13 @@ exists. But when you *are* deliberately refactoring something, do it
 properly — a half-separated file, where some of the logic moved and some
 stayed, is harder to reason about than the mixed file it came from, because
 now there are two places to look and no rule about which holds what.
+
+## What is enforced
+
+- A guard checks the one case in "Whitespace is part of readability" above
+  that is a fact about line count rather than about job separation: a
+  multi-line statement is separated by a blank line from its neighbours; a
+  run of single-line declarations of the same kind is not required to have
+  one. Everything else in this document remains a review standard — see
+  "Why this one is not a rule" above for why. The check covers
+  `.ts`/`.tsx`/`.js`/`.jsx` source.
