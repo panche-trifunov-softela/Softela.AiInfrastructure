@@ -23,6 +23,11 @@ const REAL_FRONTEND_PROJECT = readJson(
  * real project file's `stack` field drives the engine's own preset
  * resolution instead of a fixture's pre-baked `conventions`.
  *
+ * `statFile` always answers `null`, the same as `readFile`: this helper
+ * exercises the real, disk-loaded project config, not the filesystem probe,
+ * so every case built through it is expected to fall back to the unmodified
+ * lexical guess.
+ *
  * @param {object} project The project config to evaluate against.
  * @param {object} partial Context fields for this case.
  * @returns {object} A frozen context.
@@ -44,6 +49,7 @@ function realProjectCtx(project, partial) {
     overrides: makeOverrides({}),
     raw: {},
     readFile: () => null,
+    statFile: () => null,
   });
 }
 
@@ -124,6 +130,171 @@ suite("guards/colocated-tests", ({ test, eq }) => {
 
   test("an ordinary non-test source file passes", () => {
     eq(decide(rule, { toolName: "Write", filePath: "src/components/Button/Button.tsx" }), "pass");
+  });
+
+  // --- what a component folder owns: its hook, its utilities --------------
+  //
+  // testing.md's own OrderPanel example puts all three of these in the
+  // component's __tests__; only the component itself has a folder of its own
+  // to sit beside.
+
+  test("a component's own hook test in the component's __tests__ passes", () => {
+    eq(
+      decide(rule, {
+        toolName: "Write",
+        filePath: "src/components/OrderPanel/__tests__/useOrderPanel.test.ts",
+      }),
+      "pass",
+    );
+  });
+
+  test("a component's own utility test in the component's __tests__ passes", () => {
+    eq(
+      decide(rule, {
+        toolName: "Write",
+        filePath: "src/components/OrderPanel/__tests__/canEditOrder.test.ts",
+      }),
+      "pass",
+    );
+  });
+
+  test("a utility test in a shared utils folder's own __tests__ passes", () => {
+    eq(decide(rule, { toolName: "Write", filePath: "src/utils/__tests__/formatDate.test.ts" }), "pass");
+  });
+
+  test("a utility test in a distant test tree still denies", () => {
+    eq(decide(rule, { toolName: "Write", filePath: "tests/utils/formatDate.test.ts" }), "deny");
+  });
+
+  test("a utility test beside the utility, with no __tests__ folder, denies", () => {
+    eq(
+      decide(rule, {
+        toolName: "Write",
+        filePath: "src/components/OrderPanel/utils/canEditOrder.test.ts",
+      }),
+      "deny",
+    );
+  });
+
+  test("a misplaced utility test is pointed at its owner, not at a folder of its own", () => {
+    const result = decision(rule, {
+      toolName: "Write",
+      filePath: "src/components/OrderPanel/utils/canEditOrder.test.ts",
+    });
+    eq(result.action, "deny");
+    eq(result.fix.includes("canEditOrder/__tests__"), false);
+    eq(result.fix.includes("canEditOrder"), true);
+  });
+
+  // --- a context: PascalCase, but with no folder of its own ---------------
+  //
+  // component-structure.md gives a context no folder: one lives in the
+  // component folder beside the view, several live together in `contexts/`.
+  // Both are legal, so neither may be refused, and neither may be answered
+  // with a fix demanding a folder the standard never creates.
+
+  test("a context test in the component's own __tests__ passes", () => {
+    eq(
+      decide(rule, {
+        toolName: "Write",
+        filePath: "src/components/OrderPanel/__tests__/OrderPanelContext.test.tsx",
+      }),
+      "pass",
+    );
+  });
+
+  test("a context test in a contexts folder's own __tests__ passes", () => {
+    eq(
+      decide(rule, {
+        toolName: "Write",
+        filePath: "src/components/OrderPanel/contexts/__tests__/OrderPanelContext.test.tsx",
+      }),
+      "pass",
+    );
+  });
+
+  test("a context test beside the context, with no __tests__ folder, denies", () => {
+    eq(
+      decide(rule, {
+        toolName: "Write",
+        filePath: "src/components/OrderPanel/OrderPanelContext.test.tsx",
+      }),
+      "deny",
+    );
+  });
+
+  test("a misplaced context test is pointed at its owner, not at a folder of its own", () => {
+    const result = decision(rule, {
+      toolName: "Write",
+      filePath: "src/components/OrderPanel/OrderPanelContext.test.tsx",
+    });
+    eq(result.action, "deny");
+    eq(result.fix.includes("OrderPanelContext/__tests__"), false);
+    eq(result.fix.includes("OrderPanelContext"), true);
+  });
+
+  test("a nested child component whose name merely ends in the context suffix is not mistaken for one", () => {
+    eq(
+      decide(rule, {
+        toolName: "Write",
+        filePath: "src/components/OrderPanel/__tests__/OrderPanelContextMenu.test.tsx",
+      }),
+      "deny",
+    );
+  });
+
+  // --- PascalCase outside the component tree: types, enums, classes -------
+  //
+  // The demand for a folder of one's own is a component-folder convention and
+  // is scoped to `conventions.componentFolders`. A PascalCase subject outside
+  // that tree is a type, an enum or a class, none of which gets a folder.
+
+  test("a type test in its own folder's __tests__ passes", () => {
+    eq(decide(rule, { toolName: "Write", filePath: "src/types/__tests__/OrderStatus.test.ts" }), "pass");
+  });
+
+  test("a type test beside the type, with no __tests__ folder, denies", () => {
+    eq(decide(rule, { toolName: "Write", filePath: "src/types/OrderStatus.test.ts" }), "deny");
+  });
+
+  test("a misplaced type test is not answered with a component folder it will never have", () => {
+    const result = decision(rule, { toolName: "Write", filePath: "src/types/OrderStatus.test.ts" });
+    eq(result.action, "deny");
+    eq(result.fix.includes("OrderStatus/__tests__"), false);
+    eq(result.fix.includes("OrderStatus"), true);
+  });
+
+  test("the component check still applies everywhere when the project declares no componentFolders", () => {
+    eq(
+      decide(rule, {
+        toolName: "Write",
+        filePath: "src/anywhere/__tests__/SubPart.test.tsx",
+        project: { conventions: { testFolder: "__tests__" } },
+      }),
+      "deny",
+    );
+  });
+
+  // --- component folders predating the PascalCase folder convention -------
+
+  test("a component test whose folder differs from it only in casing passes", () => {
+    eq(
+      decide(rule, {
+        toolName: "Write",
+        filePath: "src/components/dtEditor/__tests__/DtEditor.test.tsx",
+      }),
+      "pass",
+    );
+  });
+
+  test("a component test in a differently named folder still denies", () => {
+    eq(
+      decide(rule, {
+        toolName: "Write",
+        filePath: "src/components/dtEditor/__tests__/DtFieldCard.test.tsx",
+      }),
+      "deny",
+    );
   });
 
   test("a cypress spec is excluded via notOurs", () => {
@@ -246,6 +417,136 @@ suite("guards/colocated-tests", ({ test, eq }) => {
         toolName: "Write",
         filePath: "C:/other/src/components/Button/__tests__/Button.test.tsx",
         git: { repoRoot: null },
+      }),
+      "pass",
+    );
+  });
+
+  // --- filesystem probe: a component still in flat-file, legacy form -------
+  //
+  // `hasOwnFolder` guesses "owns a folder" from spelling alone. These cases
+  // give the rule a spec whose own import proves the guess wrong — the
+  // subject is a single flat file, not a folder — and check that the probe,
+  // and only the probe, is what changes the outcome.
+  //
+  // Every `files` key here is an absolute path anchored under the fixture's
+  // own repository root (`/repo`, `makeGit`'s default), matching exactly what
+  // the rule hands `ctx.statFile` in production: a path built from
+  // `(ctx.git && ctx.git.repoRoot) || ctx.cwd`, never from `ctx.cwd` alone.
+
+  test("a flat-file component tested from the shared central __tests__, proven flat by its own import, passes", () => {
+    eq(
+      decide(rule, {
+        toolName: "Write",
+        filePath: "src/components/__tests__/StatusChip.test.tsx",
+        content: 'import { StatusChip } from "../StatusChip";\n',
+        files: { "/repo/src/components/StatusChip.tsx": "export const StatusChip = () => null;\n" },
+      }),
+      "pass",
+    );
+  });
+
+  test("the same shared central __tests__ case still denies once the subject's own folder-shaped file is proven to exist", () => {
+    eq(
+      decide(rule, {
+        toolName: "Write",
+        filePath: "src/components/__tests__/StatusChip.test.tsx",
+        content: 'import { StatusChip } from "../StatusChip";\n',
+        files: { "/repo/src/components/StatusChip/StatusChip.tsx": "export const StatusChip = () => null;\n" },
+      }),
+      "deny",
+    );
+  });
+
+  test("a flat-file component tested beside itself, proven flat by its own import, still denies but is pointed at its owner directly", () => {
+    const result = decision(rule, {
+      toolName: "Write",
+      filePath: "src/components/StatusChip.test.tsx",
+      content: 'import { StatusChip } from "./StatusChip";\n',
+      files: { "/repo/src/components/StatusChip.tsx": "export const StatusChip = () => null;\n" },
+    });
+    eq(result.action, "deny");
+    eq(result.fix.includes("StatusChip/__tests__"), false);
+    eq(result.fix.includes("StatusChip"), true);
+  });
+
+  test("with no usable import, the probe falls back to the componentFolders literal prefix and still passes for a flat file", () => {
+    eq(
+      decide(rule, {
+        toolName: "Write",
+        filePath: "src/components/__tests__/StatusChip.test.tsx",
+        files: { "/repo/src/components/StatusChip.tsx": "export const StatusChip = () => null;\n" },
+      }),
+      "pass",
+    );
+  });
+
+  test("when the probe can establish nothing at all, an otherwise-identical denial is unchanged", () => {
+    eq(
+      decide(rule, {
+        toolName: "Write",
+        filePath: "src/components/__tests__/StatusChip.test.tsx",
+        content: 'import { StatusChip } from "../StatusChip";\n',
+        files: { "/repo/src/utils/formatDate.ts": "export const formatDate = () => '';\n" },
+      }),
+      "deny",
+    );
+  });
+
+  test("an existing denial case is unaffected by an unrelated files fixture present in the same context", () => {
+    eq(
+      decide(rule, {
+        toolName: "Write",
+        filePath: "src/components/Button/Button.test.tsx",
+        files: { "/repo/src/utils/formatDate.ts": "export const formatDate = () => '';\n" },
+      }),
+      "deny",
+    );
+  });
+
+  // --- regression: the probe must anchor on the repository root -----------
+  //
+  // In production `ctx.cwd` is not the repository root — `resolveWorkdir`
+  // prefers the write's own nearest existing ancestor directory, which for a
+  // spec file is that spec's own directory. `ctx.statFile` resolves a
+  // relative path against `ctx.cwd`, never against the repository root, so a
+  // probe that ever goes back to handing it a bare, repo-relative path would
+  // ask about a location nested under the spec's own directory instead of
+  // the real one, find nothing, and silently stop loosening anything. `cwd`
+  // below is deliberately the spec's own directory, a genuine subdirectory of
+  // `git.repoRoot`, to pin exactly that anchor.
+
+  test("the probe finds the subject's flat file when ctx.cwd is the spec's own subdirectory, not the repository root", () => {
+    eq(
+      decide(rule, {
+        toolName: "Write",
+        filePath: "src/components/__tests__/StatusChip.test.tsx",
+        cwd: "/repo/src/components/__tests__",
+        git: { repoRoot: "/repo" },
+        content: 'import { StatusChip } from "../StatusChip";\n',
+        files: { "/repo/src/components/StatusChip.tsx": "export const StatusChip = () => null;\n" },
+      }),
+      "pass",
+    );
+  });
+
+  // --- deriveCandidateDir: a same-named import must not shadow the subject ---
+  //
+  // More than one specifier can end in a segment that spells the subject's
+  // own name — a mock or a fixture imported under the same name as the real
+  // module. Picking whichever comes first in the file would let a mock's own
+  // import point the probe at the wrong directory; the specifier that
+  // resolves inside `conventions.componentFolders` must win instead.
+
+  test("the probe follows the import that resolves inside componentFolders even when a same-named import appears first", () => {
+    eq(
+      decide(rule, {
+        toolName: "Write",
+        filePath: "src/components/__tests__/StatusChip.test.tsx",
+        content:
+          'import { StatusChip } from "../../mocks/StatusChip";\n' +
+          'import { StatusChip } from "../StatusChip";\n',
+        files: { "/repo/src/components/StatusChip.tsx": "export const StatusChip = () => null;\n" },
       }),
       "pass",
     );

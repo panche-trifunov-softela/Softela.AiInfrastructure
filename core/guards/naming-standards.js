@@ -15,13 +15,12 @@
 
 const path = require("path");
 const { deny, pass } = require("../lib/decision");
+const { HOOK_NAME, PASCAL_CASE } = require("../lib/naming-patterns");
 const { globToRegex } = require("../lib/project-resolver");
 
 /** Tool names this rule inspects, shared with every other file-content rule. */
 const FILE_TOOLS = /^(Write|Edit|MultiEdit|NotebookEdit|apply_patch|write_file)$/;
 
-const PASCAL_CASE = /^[A-Z][A-Za-z0-9]*$/;
-const HOOK_NAME = /^use[A-Z][A-Za-z0-9]*$/;
 const I_PREFIXED_INTERFACE = /^I[A-Z][A-Za-z0-9]*$/;
 const CAMEL_SEGMENT = /^[a-z0-9]+[A-Z][A-Za-z0-9]*$/;
 

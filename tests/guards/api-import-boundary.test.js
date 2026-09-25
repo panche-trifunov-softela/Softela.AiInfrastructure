@@ -318,6 +318,199 @@ suite("guards/api-import-boundary", ({ test, eq }) => {
     );
   });
 
+  // --- a component's own hook is where the API call belongs -----------------
+
+  test("a component's own hook may import the API layer", () => {
+    eq(
+      decide(rule, {
+        toolName: "Write",
+        filePath: "src/components/Button/hooks/useUser.ts",
+        content: 'import { getUser } from "../../../services/api/userApi";',
+      }),
+      "pass",
+    );
+  });
+
+  test("a hook at the component folder's own root may import the API layer", () => {
+    eq(
+      decide(rule, {
+        toolName: "Write",
+        filePath: "src/components/Button/useButton.ts",
+        content: 'import { getUser } from "../../services/api/userApi";',
+      }),
+      "pass",
+    );
+  });
+
+  test("a hook taking .tsx because it returns JSX may still import the API layer", () => {
+    eq(
+      decide(rule, {
+        toolName: "Write",
+        filePath: "src/components/Button/useConfirmDialog.tsx",
+        content: 'import { getUser } from "../../services/api/userApi";',
+      }),
+      "pass",
+    );
+  });
+
+  test("a hook file taking .js may still import the API layer", () => {
+    eq(
+      decide(rule, {
+        toolName: "Write",
+        filePath: "src/components/Button/hooks/useUser.js",
+        content: 'import { getUser } from "../../../services/api/userApi";',
+      }),
+      "pass",
+    );
+  });
+
+  test("a hook file taking .jsx may still import the API layer", () => {
+    eq(
+      decide(rule, {
+        toolName: "Write",
+        filePath: "src/components/Button/useConfirmDialog.jsx",
+        content: 'import { getUser } from "../../services/api/userApi";',
+      }),
+      "pass",
+    );
+  });
+
+  test("the view beside that hook still may not import the API layer", () => {
+    eq(
+      decide(rule, {
+        toolName: "Write",
+        filePath: "src/components/Button/Button.tsx",
+        content: 'import { getUser } from "../../services/api/userApi";',
+      }),
+      "deny",
+    );
+  });
+
+  // A hook is `use` followed by a capital. Without that, every view whose name
+  // begins with the English words "used" or "user" reads as a hook and walks
+  // straight through a boundary rule.
+
+  test('a view merely beginning with "used" is not a hook and still denies', () => {
+    eq(
+      decide(rule, {
+        toolName: "Write",
+        filePath: "src/components/Button/usedFieldsPanel.tsx",
+        content: 'import { getUser } from "../../services/api/userApi";',
+      }),
+      "deny",
+    );
+  });
+
+  test('a view merely beginning with "user" is not a hook and still denies', () => {
+    eq(
+      decide(rule, {
+        toolName: "Write",
+        filePath: "src/components/Button/userProfileCard.tsx",
+        content: 'import { getUser } from "../../services/api/userApi";',
+      }),
+      "deny",
+    );
+  });
+
+  test("a PascalCase view name is not a hook and still denies", () => {
+    eq(
+      decide(rule, {
+        toolName: "Write",
+        filePath: "src/components/Button/UserProfile.tsx",
+        content: 'import { getUser } from "../../services/api/userApi";',
+      }),
+      "deny",
+    );
+  });
+
+  // Consuming the API layer is the hook's job; handing it on under the hook's
+  // own name puts it back within the view's reach, one hop further out.
+
+  test("a hook re-exporting the whole API layer denies", () => {
+    eq(
+      decide(rule, {
+        toolName: "Write",
+        filePath: "src/components/Button/hooks/useApi.ts",
+        content: 'export * from "../../../services/api/userApi";',
+      }),
+      "deny",
+    );
+  });
+
+  test("a hook re-exporting named bindings from the API layer denies", () => {
+    eq(
+      decide(rule, {
+        toolName: "Write",
+        filePath: "src/components/Button/hooks/useApi.ts",
+        content: 'export { getUser } from "../../../services/api/userApi";',
+      }),
+      "deny",
+    );
+  });
+
+  test("a hook that both imports and re-exports the API layer denies on the re-export", () => {
+    eq(
+      decide(rule, {
+        toolName: "Write",
+        filePath: "src/components/Button/hooks/useUser.ts",
+        content:
+          'import { getUser } from "../../../services/api/userApi";\nexport * from "../../../services/api/userApi";',
+      }),
+      "deny",
+    );
+  });
+
+  test("a hook's type-only re-export of the API layer still passes", () => {
+    eq(
+      decide(rule, {
+        toolName: "Write",
+        filePath: "src/components/Button/hooks/useUser.ts",
+        content: 'export type { UserResponse } from "../../../services/api/userApi";',
+      }),
+      "pass",
+    );
+  });
+
+  test("a hook re-exporting something that is not the API layer passes", () => {
+    eq(
+      decide(rule, {
+        toolName: "Write",
+        filePath: "src/components/Button/hooks/useUser.ts",
+        content: 'export * from "./useUserInternals";',
+      }),
+      "pass",
+    );
+  });
+
+  test("a hook may require() the API layer", () => {
+    eq(
+      decide(rule, {
+        toolName: "Write",
+        filePath: "src/components/Button/hooks/useUser.ts",
+        content: 'const api = require("../../../services/api/userApi");',
+      }),
+      "pass",
+    );
+  });
+
+  test("a hook may reach the API layer through a declared path alias", () => {
+    eq(
+      decide(rule, {
+        toolName: "Write",
+        filePath: "src/components/Button/hooks/useUser.ts",
+        content: 'import { getUser } from "@/services/api/userApi";',
+        project: {
+          conventions: {
+            componentFolders: "src/components/**",
+            apiLayer: "src/services/api/**",
+            pathAliases: { "@": "src" },
+          },
+        },
+      }),
+      "pass",
+    );
+  });
+
   // --- override --------------------------------------------------------------
 
   test("an override can soften the deny to an ask", () => {

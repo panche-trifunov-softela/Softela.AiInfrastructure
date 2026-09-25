@@ -31,10 +31,25 @@ const WRITE_TOOLS = /^(Write|Edit|MultiEdit|NotebookEdit|apply_patch|write_file)
 /**
  * Files considered by the correspondence scan, in total across every
  * configured source root. Sized the same as `reuse-before-new.js`'s own
- * bound: comfortably above the largest real repository under active use,
- * while still being a real bound rather than an unbounded walk.
+ * bound — the two are independent constants in independent files, not a
+ * shared import, so both are raised together here. Raised fourfold to
+ * 24000 because hitting this cap does not shrink the check, it silences it:
+ * past the limit `scanRelPaths` reports the scan incomplete and `evaluate`
+ * passes without saying why, so a hook that genuinely does correspond to an
+ * existing component goes unflagged in a repository this large.
+ *
+ * Measured against the largest real tree on this machine (16909 raw files
+ * under the walked roots): 180-530 ms per scan, negligible next to the real
+ * `HOOK_TIMEOUT_SECONDS` budget both hosts actually enforce on every hook
+ * registration (`core/installer/plan.js`, 30 seconds) — and that same tree
+ * uses only about 15% of this 24000-file cap, so in practice the cap never
+ * actually engages; a wider bound would only ever cost more walk time on a
+ * tree this rule has yet to see. Left at 24000 rather than lowered, since a
+ * bound that never engages costs nothing to keep generous, and the
+ * alternative — going quiet past the limit instead of shrinking the check —
+ * is the one this rule is built never to do.
  */
-const MAX_SCAN_FILES = 6000;
+const MAX_SCAN_FILES = 24000;
 
 /**
  * Directory names skipped on top of `listFilesRecursive`'s own built-in
@@ -70,6 +85,25 @@ const HOOK_PREFIX = /^use(?=[A-Z0-9])/;
 const TEST_QUALIFIER = /\.(test|spec)$/i;
 
 /**
+ * Per-process cache of completed scans, keyed by the resolved, sorted list of
+ * source-root paths that produced the result — the same memoisation
+ * `reuse-before-new.js#scanFiles` already uses for the same kind of walk,
+ * followed here rather than a second, independently-invented pattern.
+ * `SCAN_EXTENSIONS` and {@link MAX_SCAN_FILES} are both fixed constants in
+ * this rule (unlike `reuse-before-new.js`, which lets a project override its
+ * own bound), so the roots alone are enough to key a result: two calls
+ * sharing the same roots always walk the same tree the same way.
+ *
+ * Without this, every matching file write in a session paid the full walk
+ * again, never amortised even across the exact same tree scanned moments
+ * before — while `reuse-before-new.js`'s own scan, right beside this one and
+ * shaped the same way, has long paid that cost only once per process.
+ *
+ * @type {Map<string, {complete: boolean, relPaths: string[]}>}
+ */
+const scanCache = new Map();
+
+/**
  * Resolves a context's file path to a forward-slash path relative to the
  * repository root, falling back to the working directory when the root is
  * unknown.
@@ -94,9 +128,20 @@ function relativePath(ctx) {
  * root (POSIX-separated).
  * @returns {{complete: boolean, relPaths: string[]}} `complete` is `false`
  * when the roots together hold more than {@link MAX_SCAN_FILES} matching
- * files, in which case `relPaths` is empty and must not be trusted.
+ * files, in which case `relPaths` is empty and must not be trusted. Cached
+ * in {@link scanCache} across calls sharing the same roots, INCLUDING an
+ * incomplete result — a tree too big to finish scanning once is too big to
+ * finish scanning again a moment later, so there is nothing to gain by
+ * repeating the walk.
  */
 function scanRelPaths(roots) {
+  const key = roots
+    .map((r) => `${r.absRoot}=>${r.prefix}`)
+    .sort()
+    .join("|");
+  const cached = scanCache.get(key);
+  if (cached) return cached;
+
   const relPaths = [];
   for (const root of roots) {
     const remaining = MAX_SCAN_FILES - relPaths.length;
@@ -105,10 +150,17 @@ function scanRelPaths(roots) {
       extensions: SCAN_EXTENSIONS,
       limit: remaining,
     });
-    if (!walked.complete) return { complete: false, relPaths: [] };
+    if (!walked.complete) {
+      const incomplete = { complete: false, relPaths: [] };
+      scanCache.set(key, incomplete);
+      return incomplete;
+    }
     for (const rel of walked.files) relPaths.push(root.prefix ? `${root.prefix}/${rel}` : rel);
   }
-  return { complete: true, relPaths };
+
+  const result = { complete: true, relPaths };
+  scanCache.set(key, result);
+  return result;
 }
 
 /**

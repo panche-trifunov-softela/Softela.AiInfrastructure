@@ -140,16 +140,18 @@
  * (n+1)×(m+1) grid — the backward LCS table, the forward LCS table, and the
  * per-line "does excluding it cost anything" scan the "necessarily matched"
  * check above needs — not the single pass a plain LCS would take. Manifests
- * are small in the ordinary case, but a `PreToolUse` hook has a 5-second
- * budget shared with everything else that runs in it, and a pathological
- * input must not spend that budget on this one comparison.
+ * are small in the ordinary case, but a `PreToolUse` hook has a bounded
+ * budget shared with everything else that runs in it — `HOOK_TIMEOUT_SECONDS`
+ * in `core/installer/plan.js`, 30 seconds; see that constant's own doc
+ * comment for why it is set where it is — and a pathological input must not
+ * spend that budget on this one comparison.
  * {@link computeChangedRegion} bounds each side to `LINE_COUNT_CEILING`
  * (2000) lines; past that, it falls back to judging the whole resulting
  * content, exactly the same conservative direction as "no on-disk baseline"
  * below — and the denial reason says so, for the same reason that case's
  * reason does. 2000 lines a side, measured end to end through the real rule
- * on an ordinary cold Node process, costs roughly 250-260ms — about 5% of
- * the 5-second budget, with every other rule in the same hook invocation
+ * on an ordinary cold Node process, costs roughly 250-260ms — under 1% of
+ * the 30-second budget, with every other rule in the same hook invocation
  * still to run. That is comfortable headroom, not a close call: a real
  * patch manifest is nowhere near 2000 lines, so the ceiling is sized to be
  * generous to a legitimately large one while still refusing to let an

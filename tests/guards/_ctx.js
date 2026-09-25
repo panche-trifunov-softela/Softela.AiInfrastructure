@@ -9,6 +9,14 @@
  * developer's real configuration — a guard test that needs any of those is
  * testing the wrong layer.
  *
+ * `ctx.readFile` and `ctx.statFile` are both backed by the same `files`
+ * fixture map, using the same key-resolution rules: an exact key match first,
+ * then a match resolved against this context's own `cwd`. `readFile` returns
+ * a mapped string's own content; `statFile` returns its byte length instead,
+ * mirroring the real `ctx.statFile`'s "size, not content" contract. Neither
+ * reads the real filesystem — a path absent from `files` reads and stats as
+ * absent, never as whatever happens to be on disk.
+ *
  * Assertions go through `decide()`, which runs the rule inside the engine
  * rather than calling `evaluate` directly. That is deliberate: the override
  * clamp, the `allow` short-circuit and the "a throwing rule is skipped" path
@@ -166,6 +174,33 @@ function makeGit(partial) {
 }
 
 /**
+ * Looks up a fixture file by an exact key match, then by resolving both the
+ * requested path and each fixture key against a working directory and
+ * comparing the results.
+ *
+ * @param {Object.<string, string>} files The fixture map.
+ * @param {string} cwdForResolve The working directory relative paths resolve
+ * against.
+ * @param {string} p The path being looked up.
+ * @returns {string|undefined} The matched fixture value, or `undefined` when
+ * nothing matches.
+ */
+function lookupFixtureFile(files, cwdForResolve, p) {
+  if (typeof p !== "string" || !p) return undefined;
+  if (Object.prototype.hasOwnProperty.call(files, p)) return files[p];
+  try {
+    const target = path.isAbsolute(p) ? p : path.resolve(cwdForResolve, p);
+    for (const key of Object.keys(files)) {
+      const keyResolved = path.isAbsolute(key) ? key : path.resolve(cwdForResolve, key);
+      if (keyResolved === target) return files[key];
+    }
+  } catch {
+    // Fall through to undefined below.
+  }
+  return undefined;
+}
+
+/**
  * Builds a frozen context for a guard test.
  *
  * Top-level fields are replaced wholesale; `project`, `git` and `session` are
@@ -216,19 +251,18 @@ function makeCtx(partial = {}) {
     // resolved `ctx.filePath` to an absolute path (`patch-manifest`'s own
     // ratchet, in the same spirit as `no-explicit-any`'s).
     readFile: (p) => {
-      if (typeof p !== "string" || !p) return null;
-      if (Object.prototype.hasOwnProperty.call(files, p)) return files[p];
-      try {
-        const cwdForResolve = partial.cwd || "/repo";
-        const target = path.isAbsolute(p) ? p : path.resolve(cwdForResolve, p);
-        for (const key of Object.keys(files)) {
-          const keyResolved = path.isAbsolute(key) ? key : path.resolve(cwdForResolve, key);
-          if (keyResolved === target) return files[key];
-        }
-      } catch {
-        // Fall through to null below.
-      }
-      return null;
+      const cwdForResolve = partial.cwd || "/repo";
+      const found = lookupFixtureFile(files, cwdForResolve, p);
+      return typeof found === "string" ? found : null;
+    },
+    // Byte length of the same fixture entry `readFile` would return, never
+    // its content — the real `ctx.statFile` answers "how big", not "what's
+    // in it", and a rule that leaned on `statFile` returning content instead
+    // of a size would pass here and fail against the real context.
+    statFile: (p) => {
+      const cwdForResolve = partial.cwd || "/repo";
+      const found = lookupFixtureFile(files, cwdForResolve, p);
+      return typeof found === "string" ? Buffer.byteLength(found, "utf8") : null;
     },
   });
 }

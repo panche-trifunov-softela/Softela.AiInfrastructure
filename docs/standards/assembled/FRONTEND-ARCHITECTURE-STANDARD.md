@@ -1009,6 +1009,20 @@ is free to reach past the next layer:
   through the project's API layer. This is what keeps a view testable
   without a network mock — see [`api-layer.md`](./api-layer.md) for how
   that layer itself is organised.
+- **The hook is where the import of the API layer belongs, and that holds
+  wherever the hook lives.** A component's own hook sits inside the
+  component folder — see [`component-structure.md`](./component-structure.md)
+  — so a file such as `OrderPanel/hooks/useOrderPersistence.ts` importing
+  `src/services/api/orders.ts` is this rule being followed, not broken.
+  There is no requirement to promote a hook out of its component folder in
+  order to let it reach the backend; promotion is about a second consumer,
+  not about layering.
+- **A hook consumes the API layer; it never republishes it.** A file inside
+  a component folder that only re-exports the API layer —
+  `export * from "../../services/api/orders"` — is a proxy wearing a
+  hook's name. It hands the view the whole layer one hop further out, where
+  the view's own import no longer looks like an API import at all. Export
+  what the view actually needs: values, not the module.
 - **A shared type never imports from a component.** If a shape used by a
   service or another module currently lives inside a component file, the
   shape belongs in a shared types location, not the other way around — see
@@ -1027,7 +1041,13 @@ component still MUST NOT bypass its hook to reach it directly.
 ## What is enforced
 
 - `api-import-boundary` checks the direction of dependency between
-  components, hooks, the API layer and shared types.
+  components, hooks, the API layer and shared types. It reads a file named
+  `useSomething.ts` or `useSomething.tsx` as the hook, and lets it import
+  the API layer; a view beside it may not. The capital after `use` is what
+  it keys on, so `usedFieldsPanel.tsx` is a view, not a hook. A `.js` or
+  `.jsx` hook file counts the same way, for a plain-JavaScript component
+  folder. A re-export of the API layer is denied whatever the file is
+  called.
 - The view/hook split itself and the "utilities MUST be pure" rule are not
   independently guarded today; a violation is expected to be caught in
   review, guided by this document.
@@ -2254,6 +2274,17 @@ no single component — is accepted deliberately: those stay in a project's
 central test tree. Only specs that test one component's own view, hook and
 utilities move into its folder.
 
+**Colocation arrives with the folder.** Everything above assumes the
+component already has one, in the shape
+[`component-structure.md`](./component-structure.md#every-component-must-live-in-its-own-folder)
+describes. A component that predates that shape and still exists as a
+single flat file has no folder for a spec to sit inside; its test stays in
+the project's central test tree until the component itself is refactored
+into folder shape, at which point the spec moves into the new `__tests__/`
+in the same change that creates the folder. This is not a loophole for new
+work — a new component is created in folder shape from the start, so the
+exception never applies to it.
+
 ## What to test
 
 - **Utilities: always.** Pure functions are cheap to test and this is
@@ -2334,7 +2365,10 @@ review or a shared branch.
 ## What is enforced
 
 - `colocated-tests` checks that a new spec is placed inside the folder of
-  the code it tests, in `__tests__/`.
+  the code it tests, in `__tests__/`, once that code actually has a
+  folder — it establishes this from the filesystem rather than assuming it,
+  so a component still in flat-file shape is not asked for a folder its
+  spec has nowhere to go into.
 - The specific coverage percentage and its start date are project
   configuration, not something this document or its guards fix a number
   for.

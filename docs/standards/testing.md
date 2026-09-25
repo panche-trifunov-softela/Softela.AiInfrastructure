@@ -92,6 +92,17 @@ no single component — is accepted deliberately: those stay in a project's
 central test tree. Only specs that test one component's own view, hook and
 utilities move into its folder.
 
+**Colocation arrives with the folder.** Everything above assumes the
+component already has one, in the shape
+[`component-structure.md`](./component-structure.md#every-component-must-live-in-its-own-folder)
+describes. A component that predates that shape and still exists as a
+single flat file has no folder for a spec to sit inside; its test stays in
+the project's central test tree until the component itself is refactored
+into folder shape, at which point the spec moves into the new `__tests__/`
+in the same change that creates the folder. This is not a loophole for new
+work — a new component is created in folder shape from the start, so the
+exception never applies to it.
+
 ## What to test
 
 - **Utilities: always.** Pure functions are cheap to test and this is
@@ -172,7 +183,10 @@ review or a shared branch.
 ## What is enforced
 
 - `colocated-tests` checks that a new spec is placed inside the folder of
-  the code it tests, in `__tests__/`.
+  the code it tests, in `__tests__/`, once that code actually has a
+  folder — it establishes this from the filesystem rather than assuming it,
+  so a component still in flat-file shape is not asked for a folder its
+  spec has nowhere to go into.
 - The specific coverage percentage and its start date are project
   configuration, not something this document or its guards fix a number
   for.
