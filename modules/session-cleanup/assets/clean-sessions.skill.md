@@ -16,8 +16,9 @@ node "$HOME/.codex/softela-ai/hooks/clean-sessions.js"
 
 - **no arguments** — sweeps today's sessions. Codex files its transcripts by
   date rather than by project, so today is the equivalent of "the ones you
-  are working with".
-- **`--all`** — every session on this machine except the live one.
+  are working with". Guard-activity logs are never touched by a plain run.
+- **`--all`** — every session on this machine except the live one, plus every
+  guard-activity log on the host except today's, which is always kept.
 - **`--apply`** — delete instead of reporting.
 
 There are no other arguments. Do not invent one, and do not pass a flag the

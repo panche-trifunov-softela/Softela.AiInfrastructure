@@ -13,7 +13,9 @@ node "$HOME/.claude/softela-ai/hooks/clean-sessions.js" $ARGUMENTS
 ## What the two arguments mean
 
 - **no arguments** — sweeps the sessions of the project you are in.
-- **`--all`** — every session on this machine except the live one.
+  Guard-activity logs are never touched by a plain run.
+- **`--all`** — every session on this machine except the live one, plus every
+  guard-activity log on the host except today's, which is always kept.
 - **`--apply`** — delete instead of reporting.
 
 There are no other arguments. Do not invent one, and do not pass a flag the

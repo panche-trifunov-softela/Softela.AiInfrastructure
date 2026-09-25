@@ -1,21 +1,51 @@
 "use strict";
 
 /**
- * Advises delegating a survey of the codebase instead of reading it into the
- * orchestrator's own context.
+ * Advises — and, once a task's own tally proves it, denies — reading or
+ * editing a bulk of the codebase directly instead of delegating it to a
+ * subagent.
  *
  * Reading is the delegable activity that quietly stops being delegated. Two
  * kinds of read are legitimately the orchestrator's own and are never the
  * target here: reviewing what a subagent produced, and establishing the one
  * fact a decision actually turns on. Neither is distinguishable from any
- * other read at the point a hook sees it, so this rule does not try. What it
- * recognises instead is shape: a command that sweeps a whole tree, or opens
- * a fistful of files in one go, is a survey — and a survey is what a
- * subagent is for.
+ * other read at the point a hook sees it, so this rule does not try by
+ * itself. Two independent signals feed the decision instead:
  *
- * Advisory by construction. It never blocks, on either host: the guess it
- * makes is a good one often enough to be worth saying and wrong often enough
- * that stopping the work over it would be indefensible.
+ * - a shell command's own shape — a sweep across a tree, or a fistful of
+ *   files opened in one command — the original, advisory-only heuristic;
+ * - the current task's own file tally (`core/lib/task-tally.js`), counting
+ *   distinct files this session has actually read or written since its last
+ *   prompt. This is the tier that can escalate to a real denial, because it
+ *   is evidence of what happened, not a guess about one command's shape.
+ *
+ * Two thresholds, read from the project config (`delegation.adviseAt` /
+ * `delegation.denyAt`, defaulting to 5 and 15): at or above `denyAt` the
+ * rule denies; at or above `adviseAt` it advises; below `adviseAt` it falls
+ * back to exactly the shell-shape heuristic this rule always had, so nothing
+ * that fired before this change stops firing.
+ *
+ * `deny` requires a trustworthy session key. When `ctx.sessionId` is `null`,
+ * or `readTaskTally` returns `null`, this rule MUST NOT deny — it may advise
+ * at most. Without a session key the counter cannot separate two concurrent
+ * sessions working in one repository and would over-count, and an
+ * over-count at the deny tier blocks a developer for no reason at all.
+ * Under-counting only costs a missed nudge, which is the safe direction to
+ * fail in — so every failure mode here (a missing log, an unreadable one, a
+ * null tally, a missing threshold) is fail-open: it falls back to exactly
+ * today's behaviour, never to something stricter.
+ *
+ * Softela departure from upstream: on Codex the tally tier never denies —
+ * see {@link tallyBasedDecision} — because a Codex hook payload carries no
+ * `agent_id` at all, so a Codex subagent's own bulk reading cannot be told
+ * apart from the orchestrator's, and denying it would block exactly the
+ * delegated work this rule exists to encourage.
+ *
+ * Advisory by construction at the `ask` tier: an `ask` from this rule never
+ * blocks, on either host, because the shell-shape half of the guess is wrong
+ * often enough that stopping the work over it alone would be indefensible.
+ * The tally-backed `deny` tier is the one exception, and only once the
+ * safety rule above is satisfied.
  *
  * Silent inside a delegated agent (`ctx.agentId` set): the advice is
  * addressed to an orchestrator deciding whether to read a survey itself or
@@ -23,14 +53,135 @@
  * nothing further to delegate to — and telling one to spawn a subagent of
  * its own is exactly the nested delegation `no-nested-delegation` forbids.
  *
+ * Out of scope entirely: a command line that only drives version control.
+ * Committing, staging, diffing and reading a log are neither reading nor
+ * editing the codebase, and handing one to a subagent buys nothing, so they
+ * are exempt before the tally is consulted at all — otherwise a task that
+ * has legitimately read a lot cannot commit what it produced. `git grep` is
+ * the exception, since it sweeps a tree exactly as a plain search does.
+ *
  * A bounded search is not a survey: a statement whose output is piped into
  * `head`, `tail`, `wc`, or `sort` piped into one of those, caps what reaches
  * the context the same way the locator flags this rule already honours do,
  * so it reads as ordinary work rather than a sweep.
  */
 
-const { pass, ask } = require("../lib/decision");
+const { pass, ask, deny } = require("../lib/decision");
 const { splitStatements, splitTokens } = require("../lib/shell-parse");
+const { readTaskTally } = require("../lib/task-tally");
+const { isReadToolName } = require("../lib/read-tools");
+const { isWriteToolName } = require("../lib/write-decode");
+
+/** Shell tool names, on either host, whose command line this rule parses for a survey shape. */
+const SHELL_TOOLS = /^(Bash|PowerShell|shell|local_shell|run_command|exec_command|shell_command)$/;
+
+/**
+ * Matches every tool name this rule's `evaluate` can reach a decision about:
+ * a shell tool, whose command line is parsed for a survey shape, or a tool
+ * shaped like a plain file read or write, judged purely on the task's own
+ * tally with no command line to parse at all.
+ */
+const TOOLS = {
+  /**
+   * Tests one host tool name against every shape this rule can decide about.
+   *
+   * @param {string} toolName The tool name from `ctx.toolName`.
+   * @returns {boolean} `true` when the name is a shell tool, or a
+   * read/write-shaped tool this rule's tally check can judge.
+   */
+  test(toolName) {
+    return SHELL_TOOLS.test(String(toolName || "")) || isReadToolName(toolName) || isWriteToolName(toolName);
+  },
+};
+
+/**
+ * The count, at or above which this rule advises, when the project config
+ * declares nothing under `delegation.adviseAt`.
+ */
+const DEFAULT_ADVISE_AT = 5;
+
+/**
+ * The count, at or above which this rule denies, when the project config
+ * declares nothing under `delegation.denyAt`.
+ */
+const DEFAULT_DENY_AT = 15;
+
+/**
+ * Reads one of this rule's two delegation thresholds from the project
+ * config, falling back to this module's own default when the project
+ * declares nothing — the same `requiresConfig`-free pattern
+ * `doc-comment-style.js#configuredThreshold` uses: a fact this rule needs to
+ * soften, not to run at all.
+ *
+ * @param {object} project The resolved (preset-merged) project config.
+ * @param {"adviseAt"|"denyAt"} key Which threshold to read.
+ * @param {number} fallback The value used when the project declares nothing.
+ * @returns {number} The effective threshold.
+ */
+function configuredThreshold(project, key, fallback) {
+  const value = project && project.delegation && project.delegation[key];
+  return typeof value === "number" && value > 0 ? value : fallback;
+}
+
+/**
+ * Decides purely from the current task's own file tally, independent of any
+ * shell command shape — the same check applies whether this call is a shell
+ * command or a plain file read/write.
+ *
+ * `deny` is only ever reached once BOTH a trustworthy `sessionId` and a
+ * non-null tally are in hand — see this module's own doc comment for why an
+ * untrustworthy session key must never be allowed to deny. Every other case
+ * — no session id, no tally, a count below `adviseAt` — returns `null`,
+ * leaving the caller free to fall back to the shell-shape heuristic.
+ *
+ * Softela departure from upstream: on Codex, a count that would otherwise
+ * deny returns the `ask` tier instead. Codex sends no `agent_id` on any
+ * call, so a subagent's own dispatches cannot be excluded from the tally
+ * the way `readTaskTally` excludes them on Claude, and a subagent session
+ * with no `UserPromptSubmit` marker of its own is counted from the start of
+ * the day's log — denying it would block exactly the delegated work this
+ * rule asks for.
+ *
+ * @param {object} ctx The evaluation context.
+ * @param {number} adviseAt The count at or above which this rule advises.
+ * @param {number} denyAt The count at or above which this rule denies.
+ * @returns {null | {action: "deny"|"ask", reason: string, fix: string}} The
+ * decision, or `null` when the tally does not warrant one.
+ */
+function tallyBasedDecision(ctx, adviseAt, denyAt) {
+  const sessionId = typeof ctx.sessionId === "string" && ctx.sessionId.length > 0 ? ctx.sessionId : null;
+  const tally = sessionId ? readTaskTally(ctx.agent, sessionId) : null;
+  if (!tally) return null;
+
+  const count = Math.max(tally.filesRead, tally.filesWritten);
+  if (count < adviseAt) return null;
+
+  if (sessionId && count >= denyAt) {
+    if (ctx.agent === "codex") {
+      return ask(
+        `DELEGATION: this task has read or written ${count} files directly, at or past the ${denyAt}-file limit ` +
+          "configured for this project. Codex sends no per-call agent id, so a subagent's own reading cannot be " +
+          "told apart from the orchestrator's here — this stays advice rather than a denial.",
+        "Spawn a subagent to finish the survey or the bulk edit, and keep its conclusion, not its file dumps.",
+      );
+    }
+
+    return deny(
+      `DELEGATION: this task has read or written ${count} files directly, at or past the ${denyAt}-file limit ` +
+        "configured for this project. That is exactly the survey or bulk edit a subagent exists to do.",
+      "Spawn a subagent to finish the survey or the bulk edit, and keep its conclusion, not its file dumps.",
+    );
+  }
+
+  return ask(
+    `DELEGATION: this task has read or written ${count} files directly, at or past the ${adviseAt}-file advisory ` +
+      "threshold configured for this project. Reading or editing this much of the codebase yourself is exactly " +
+      "the work a subagent exists to do.",
+    "Spawn a subagent for the rest of the survey or the bulk edit and keep its conclusion, not its file dumps — " +
+      "unless this is review of a subagent's own output, or the one fact the decision turns on, both of which are " +
+      "yours to read.",
+  );
+}
 
 /** Commands that read file contents rather than searching them. */
 const READ_COMMANDS = new Set(["cat", "head", "tail", "bat", "type"]);
@@ -172,6 +323,70 @@ function isBoundedByFollowing(statements, index) {
   return i < statements.length && BOUNDING_COMMANDS.has(commandWordOf(statements[i]));
 }
 
+/** The command word whose statements this rule treats as version control rather than as reading. */
+const VERSION_CONTROL_COMMAND = "git";
+
+/**
+ * Git subcommands that survey file contents rather than manage revisions.
+ *
+ * `git grep` sweeps a tree exactly as a plain search does, so it stays in
+ * scope; everything else git does is bookkeeping over revisions.
+ */
+const VERSION_CONTROL_SURVEY_SUBCOMMANDS = new Set(["grep"]);
+
+/** Statements that only move the shell, carrying no read or write of their own. */
+const NEUTRAL_COMMANDS = new Set(["cd"]);
+
+/**
+ * Resolves the subcommand a version-control statement names.
+ *
+ * @param {string[]} tokens The statement's tokens, command word included.
+ * @returns {string} The subcommand, lower-cased, or `""` when none is named.
+ */
+function subcommandOf(tokens) {
+  for (const token of tokens.slice(1)) {
+    const arg = bareArgument(token);
+    if (!arg || arg.startsWith("-")) continue;
+    return arg.toLowerCase();
+  }
+  return "";
+}
+
+/**
+ * Decides whether a command line does nothing but drive version control.
+ *
+ * Committing, staging, diffing and reading a log are not reading or editing
+ * a bulk of the codebase, and handing one to a subagent buys nothing at all
+ * — so a command line made only of those is outside this rule's scope,
+ * whatever the task's tally has reached. A `cd` alongside them is ignored:
+ * it moves the shell and reads nothing, and a repository command is almost
+ * always written with one in front.
+ *
+ * A statement that is neither is enough to bring the whole line back into
+ * scope, so a survey cannot be smuggled through by prefixing it with a
+ * commit.
+ *
+ * @param {string} commandLine The full command line.
+ * @returns {boolean} `true` when every statement is version control or a
+ * shell move, and at least one of them is version control.
+ */
+function isVersionControlOnly(commandLine) {
+  const statements = splitStatements(commandLine).filter((statement) => commandWordOf(statement) !== "");
+  if (statements.length === 0) return false;
+
+  let sawVersionControl = false;
+
+  for (const statement of statements) {
+    const command = commandWordOf(statement);
+    if (NEUTRAL_COMMANDS.has(command)) continue;
+    if (command !== VERSION_CONTROL_COMMAND) return false;
+    if (VERSION_CONTROL_SURVEY_SUBCOMMANDS.has(subcommandOf(splitTokens(statement)))) return false;
+    sawVersionControl = true;
+  }
+
+  return sawVersionControl;
+}
+
 /**
  * Finds the first statement in a command line that reads like a survey.
  *
@@ -215,10 +430,10 @@ module.exports = {
   events: ["PreToolUse"],
 
   /** which tool names it applies to; null means every tool */
-  tools: /^(Bash|PowerShell|shell|local_shell|run_command|exec_command|shell_command)$/,
+  tools: TOOLS,
 
   /** the strongest action this rule may ever return */
-  defaultAction: "ask",
+  defaultAction: "deny",
 
   /**
    * Never a decision the developer has to take, and never a reason to stop
@@ -239,11 +454,33 @@ module.exports = {
 
   /**
    * @param {object} ctx The evaluation context.
-   * @returns {null | {action: "ask", reason: string, fix?: string}} The
-   * advice, or `null` when the command reads like ordinary work.
+   * @returns {null | {action: "deny"|"ask", reason: string, fix?: string}}
+   * The decision, or `null` when neither the task's own tally nor the
+   * command's shape (for a shell call) reads like a survey.
    */
   evaluate(ctx) {
     if (ctx.agentId) return pass();
+
+    const isShellCall = SHELL_TOOLS.test(String(ctx.toolName || ""));
+    const isFileCall = isReadToolName(ctx.toolName) || isWriteToolName(ctx.toolName);
+    if (!isShellCall && !isFileCall) return pass();
+
+    // Version control is neither reading nor editing a bulk of the
+    // codebase, so it is out of scope before the tally is even consulted —
+    // otherwise a task that has legitimately read a lot cannot commit what
+    // it produced without delegating the commit, which buys nothing.
+    if (isShellCall && isVersionControlOnly(String(ctx.command || ""))) return pass();
+
+    const adviseAt = configuredThreshold(ctx.project, "adviseAt", DEFAULT_ADVISE_AT);
+    const denyAt = configuredThreshold(ctx.project, "denyAt", DEFAULT_DENY_AT);
+
+    const tallyDecision = tallyBasedDecision(ctx, adviseAt, denyAt);
+    if (tallyDecision) return tallyDecision;
+
+    // A plain file read/write has no command line to parse — its only
+    // signal is the tally checked above. Only a shell call falls through to
+    // today's shape-based heuristic.
+    if (!isShellCall) return pass();
 
     const commandLine = String(ctx.command || "");
     if (!commandLine) return pass();

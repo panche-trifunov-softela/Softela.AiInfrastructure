@@ -461,18 +461,22 @@ function outputWidth() {
  * @param {string} text The body text to wrap.
  * @param {number} width The total column budget to fit within, prefix
  * included.
+ * @param {{hardBreak?: boolean}} [options] Forwarded to {@link tty.wrap} —
+ * `hardBreak: true` carries a single word too wide for one line across
+ * further lines instead of cutting it with an ellipsis, for callers that
+ * must never discard part of `text`.
  * @returns {string[]} One rendered line per wrapped segment, with no
  * trailing whitespace (a left-hand column padded via `tty.padTo` into
  * `prefix`, paired with an empty `text`, would otherwise leave one).
  */
-function wrapWithPrefix(prefix, text, width) {
+function wrapWithPrefix(prefix, text, width, options) {
   const indent = " ".repeat(tty.displayWidth(prefix));
   // Floored at 10 so `tty.wrap` never receives a zero/negative budget — but
   // an unusually wide prefix (a long left-hand column at a narrow terminal)
   // can still leave `indent.length` alone close to or past `width`, so the
   // final `truncate` below is the actual guarantee, not this floor.
   const bodyWidth = Math.max(10, width - indent.length);
-  const wrapped = tty.wrap(text, bodyWidth);
+  const wrapped = tty.wrap(text, bodyWidth, options);
   return wrapped.map((line, i) => tty.truncate(i === 0 ? `${prefix}${line}` : `${indent}${line}`, width).trimEnd());
 }
 
@@ -733,24 +737,79 @@ function settingsLabel(a) {
  * pointer or path cannot blow out every other row's alignment the way a
  * fixed 28/32/38 guess used to when a real value ran past it. Comfortably
  * above every label this repository actually ships today; a value that
- * still exceeds it is truncated instead (see {@link fitColumn}).
+ * still exceeds it wraps onto further lines instead (see {@link
+ * wrapColumn}) — it is never cut, only ever split across more lines.
  */
 const MAX_COLUMN_WIDTH = 60;
 
 /**
- * Fits a value into a fixed-width column: padded with spaces when it is
- * short enough, truncated with a trailing "…" when it is not — the column
- * itself never grows past `width` (INSTALLER.md §2, "columns actually
- * align").
+ * Fixed hanging indent a plan line's trailing suffix — a settings entry's
+ * `(mode, reason)`, or a kept/removed file's own `reason` — is given when it
+ * cannot share the row's own last line with the fixed columns before it (see
+ * {@link appendSuffix}).
  *
- * @param {string} value The value to fit.
- * @param {number} width The column width, already capped at
- * {@link MAX_COLUMN_WIDTH}.
- * @returns {string} `value` fitted to exactly `width` characters.
+ * Deliberately a small, fixed indent rather than one aligned under the
+ * columns themselves: those columns can be wide (a long settings label, or a
+ * deep relative path), and aligning under them would leave the suffix with
+ * barely more room than it already had on the row — defeating the point of
+ * giving it a line of its own.
  */
-function fitColumn(value, width) {
-  if (value.length <= width) return value.padEnd(width);
-  return width > 1 ? `${value.slice(0, width - 1)}…` : value.slice(0, width);
+const SUFFIX_INDENT = "    ";
+
+/**
+ * Splits a column's value into one or more exact-width lines, so a value
+ * wider than its column continues onto further lines instead of being cut
+ * with an ellipsis — INSTALLER.md §2's "columns actually align" holds
+ * because the column itself never grows past `width`, not because a value
+ * too wide for it gets thrown away. A value that already fits is simply
+ * padded, the same single line {@link tty.padTo} would produce.
+ *
+ * @param {string} value The column's raw value.
+ * @param {number} width The column's fixed width.
+ * @returns {string[]} One or more lines, each exactly `width` display
+ * columns; more than one only when `value` itself is wider than `width`.
+ */
+function wrapColumn(value, width) {
+  if (width <= 0) return [""];
+  const str = String(value);
+  if (tty.displayWidth(str) <= width) return [tty.padTo(str, width)];
+
+  const chars = Array.from(str);
+  const lines = [];
+  for (let i = 0; i < chars.length; i += width) {
+    lines.push(tty.padTo(chars.slice(i, i + width).join(""), width));
+  }
+  return lines;
+}
+
+/**
+ * Appends a plan line's trailing suffix to the last of its already-rendered
+ * column lines: inline, on that same line, when there is room left after the
+ * columns — or, rather than starting the suffix there and splitting it
+ * mid-phrase across the row and its continuation, onto fresh line(s) of its
+ * own at {@link SUFFIX_INDENT}, so it gets the room the (possibly wide)
+ * columns before it would otherwise have squeezed it into.
+ *
+ * @param {string[]} rows The line's fixed-column rows, already built by
+ * {@link wrapColumn}; never empty.
+ * @param {string} suffix The trailing text to attach — a settings entry's
+ * own `(mode, reason)`, or a kept/removed file's own `reason`.
+ * @param {number} width The terminal width every returned line must fit.
+ * @returns {string[]} `rows`, each trimmed of trailing whitespace, with
+ * `suffix` appended to the last one when it fits there, or wrapped onto new
+ * lines after it (with {@link tty.wrap}'s `hardBreak` so nothing in it is
+ * ever dropped) when it does not.
+ */
+function appendSuffix(rows, suffix, width) {
+  const head = rows.slice(0, -1).map((line) => line.trimEnd());
+  const last = rows[rows.length - 1];
+  const spaceLeft = Math.max(0, width - tty.displayWidth(last));
+
+  if (tty.displayWidth(suffix) <= spaceLeft) {
+    return [...head, tty.truncate(`${last}${suffix}`, width).trimEnd()];
+  }
+
+  return [...head, last.trimEnd(), ...wrapWithPrefix(SUFFIX_INDENT, suffix, width, { hardBreak: true })];
 }
 
 /**
@@ -801,12 +860,14 @@ function computeColumnWidths(items, home, width) {
   let detailWidth = Math.min(Math.max(settingsDetailWidth, 1), MAX_COLUMN_WIDTH);
   const settingsBudget = Math.max(8, width - SETTINGS_LINE_OVERHEAD);
   if (labelWidth + detailWidth > settingsBudget) {
-    // Shrink both columns proportionally rather than starving one of them —
-    // the suffix after them (`(enforce)` etc.) still runs past `width` on an
-    // extreme case; `renderLine`'s own final truncate is the actual
-    // guarantee, this only keeps the common case readable.
-    const ratio = settingsBudget / (labelWidth + detailWidth);
-    labelWidth = Math.max(4, Math.floor(labelWidth * ratio));
+    // The label is one settings file's own short basename — identical on
+    // every row of a given run — while the detail column is the part that
+    // actually varies in length. Shrink detail first and only take from the
+    // label once detail alone cannot free up enough room, rather than
+    // shrinking both proportionally and forcing the short, uniform label to
+    // wrap too. `renderLine` wraps whichever column still overflows once
+    // this budget is applied (see {@link wrapColumn}) rather than cutting it.
+    labelWidth = Math.min(labelWidth, Math.max(4, settingsBudget - 4));
     detailWidth = Math.max(4, settingsBudget - labelWidth);
   }
 
@@ -818,17 +879,18 @@ function computeColumnWidths(items, home, width) {
 /**
  * Renders one plan action as one or more output lines — the fixed, aligned
  * columns (the settings label/detail pair, or a kept/removed file's own
- * relative path) on the first line, with the trailing detail the developer
- * actually needs to READ — a settings entry's `(mode, reason)` suffix, or a
- * kept/removed file's own `reason` — wrapped onto as many continuation lines
- * as it needs, aligned under the column where it starts, rather than cut off
- * with an ellipsis.
+ * relative path) first, with the trailing detail the developer actually
+ * needs to READ — a settings entry's `(mode, reason)` suffix, or a kept/
+ * removed file's own `reason` — attached after them.
  *
- * The fixed columns themselves are never wrapped this way: `fitColumn`
- * already truncates a label/detail/path that overflows its own aligned
- * column width, which is a scannable identifier developers align and skim
- * rather than prose they need in full — see {@link computeColumnWidths}'s
- * own doc comment for that column-width budget.
+ * Neither the fixed columns nor the trailing suffix is ever cut with an
+ * ellipsis: a column value wider than its own aligned width ({@link
+ * wrapColumn}) continues on further lines, aligned under the column it
+ * belongs to and blank-padded in every other column on those lines; a
+ * suffix that will not fit on the row's own line moves to a fresh line of
+ * its own instead of starting there and splitting mid-phrase ({@link
+ * appendSuffix}) — see {@link computeColumnWidths}'s own doc comment for how
+ * the column widths themselves are chosen.
  *
  * @param {object} a A plan action, as built by `plan.js`.
  * @param {string} home The agent home, so file paths print relative to it.
@@ -841,17 +903,26 @@ function computeColumnWidths(items, home, width) {
 function renderLine(a, home, widths, width) {
   const symbol = symbolFor(a);
   if (a.kind === "settings") {
-    const label = fitColumn(path.basename(a.target), widths.settingsLabel);
-    const detail = fitColumn(settingsLabel(a), widths.settingsDetail);
+    const labelLines = wrapColumn(path.basename(a.target), widths.settingsLabel);
+    const detailLines = wrapColumn(settingsLabel(a), widths.settingsDetail);
+    const blankLabel = " ".repeat(widths.settingsLabel);
+    const blankDetail = " ".repeat(widths.settingsDetail);
+
+    const rows = [];
+    for (let i = 0; i < Math.max(labelLines.length, detailLines.length); i++) {
+      rows.push(`  ${i === 0 ? symbol : " "}   ${labelLines[i] || blankLabel} ${detailLines[i] || blankDetail} `);
+    }
+
     const suffix = a.action === "keep" || a.action === "none" ? `(${a.mode}, ${a.reason})` : `(${a.mode})`;
-    return wrapWithPrefix(`  ${symbol}   ${label} ${detail} `, suffix, width);
+    return appendSuffix(rows, suffix, width);
   }
 
   const rel = a.relPath || path.relative(home, a.target).split(path.sep).join("/");
   if (symbol === "!" || symbol === "-") {
-    return wrapWithPrefix(`  ${symbol}   ${fitColumn(rel, widths.fileRel)} `, a.reason, width);
+    const rows = wrapColumn(rel, widths.fileRel).map((line, i) => `  ${i === 0 ? symbol : " "}   ${line} `);
+    return appendSuffix(rows, a.reason, width);
   }
-  return [tty.truncate(`  ${symbol}   ${rel}`, width).trimEnd()];
+  return wrapWithPrefix(`  ${symbol}   `, rel, width, { hardBreak: true });
 }
 
 /**

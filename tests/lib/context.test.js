@@ -223,6 +223,12 @@ suite("lib/context", ({ test, eq, ok, deepEq, tmpdir, fixture }) => {
   test("agentType: payload.agentType", () => eq(build({ agentType: "Explore" }).agentType, "Explore"));
   test("agentType: null on a main-thread call", () => eq(build({}).agentType, null));
 
+  /* -------------------------------------------------------------- session id */
+
+  test("sessionId: payload.session_id", () => eq(build({ session_id: "session-1" }).sessionId, "session-1"));
+  test("sessionId: payload.sessionId", () => eq(build({ sessionId: "session-1" }).sessionId, "session-1"));
+  test("sessionId: null when genuinely absent", () => eq(build({}).sessionId, null));
+
   /* ------------------------------------------------------------- garbage */
 
   test("a garbage payload produces a usable, empty-ish context instead of throwing", () => {
@@ -237,6 +243,7 @@ suite("lib/context", ({ test, eq, ok, deepEq, tmpdir, fixture }) => {
     eq(ctx.command, "");
     eq(ctx.agentId, null);
     eq(ctx.agentType, null);
+    eq(ctx.sessionId, null);
     deepEq(ctx.modules, new Set());
     eq(typeof ctx.readFile, "function");
     eq(ctx.readFile("anything"), null);

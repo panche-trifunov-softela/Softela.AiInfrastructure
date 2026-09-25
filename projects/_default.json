@@ -66,5 +66,7 @@
     }
   ],
 
+  "delegation": { "adviseAt": 5, "denyAt": 15 },
+
   "memoryLocation": "global"
 }

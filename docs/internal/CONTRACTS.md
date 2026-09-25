@@ -207,10 +207,15 @@ Built by `core/lib/context.js` from a host payload, then frozen.
 | `project` | object | resolved `projects/*.json`, never `null` — falls back to `_default.json` |
 | `git` | object | `{ repoRoot, branch, base, remote, rebaseInProgress, staged() }` |
 | `session` | object | `{ model, effort }` — the host session's own settings, `null` fields when unknown |
+| `sessionId` | string \| null | the host's own session id (`session_id`/`sessionId`); `null` when the payload carries neither — see §7's "Verified Claude payload shape" and "Verified Codex payload shape" |
+| `agentId` | string \| null | set only when the call comes from inside a delegated agent; `null` on a main-thread call |
+| `agentType` | string \| null | the delegated agent's own type, alongside `agentId` |
 | `modules` | Set\<string> | enabled module ids |
 | `overrides` | object | already resolved **for this rule** — see §6 |
 | `raw` | object | the untouched payload; last resort only |
 | `readFile(p)` | fn | `string \| null` |
+| `statFile(p)` | fn | `number \| null` — the file's size in bytes, under the same boundary checks as `readFile` and without reading it |
+| `resultingContent` | string \| null | the file as it would stand after the write, when the decoder could reconstruct it |
 
 `ctx.git` is lazy: nothing shells out to `git` until a rule touches the field,
 and every failure yields a null-ish value rather than an exception.
@@ -517,6 +522,21 @@ it works, and is proven to work for at least one event — but because this
 repository does not rely on an unverified `tool_name` literal, and lets the
 shared rule engine filter by tool name instead.
 
+#### Verified Claude payload shape
+
+Measured, not assumed: every record in a real Claude Code guard-activity log
+(§7b) carried a non-null `session_id` — 79 records out of 79, across two
+separate sessions, on this machine. `logGuardActivity` writes one record per
+dispatch pass, and dispatch runs off a `PreToolUse` hook, so this establishes
+exactly one thing: **Claude Code's own `PreToolUse` payload carries
+`session_id`.** It establishes nothing about any other event's payload
+shape — `SessionStart`, `UserPromptSubmit`, `PostToolUse` and the rest were
+not part of this measurement. `core/lib/context.js#buildContext` still
+treats the field as host-supplied rather than guaranteed, exactly the way it
+already treats Codex's own `session_id` below: a payload shape nobody has
+measured yet may simply omit it, and every consumer reads a missing value as
+`null` — "unknown" — rather than assuming the field is always present.
+
 #### Verified Codex payload shape
 
 The `PreToolUse` payload carries:
@@ -712,6 +732,99 @@ instead of being swallowed silently.
 `tests/adapters/` asserts that the same rule and the same logical input produce
 the same decision through both adapters. This suite is what stops the two hosts
 drifting apart.
+
+---
+
+## 7b. Guard-activity log
+
+`adapters/shared/dispatch-core.js` records every dispatch pass to
+`<agentHome>/.softela-ai/logs/guard-activity-<YYYY-MM-DD>.jsonl` (path from
+`core/lib/paths.js#guardLogPath`), one file per agent per calendar day, named
+by local time.
+
+- **Exactly one line per dispatch, including a plain pass.** A log that only
+  recorded a denial or a question could never answer whether a rule was even
+  consulted — so a call with no rule to say anything at all still writes a
+  line, `action: "pass"` and `ruleId: null`, alongside the tool, the file path
+  or command (truncated past 20000 characters), the session id when known, and
+  the agent/subagent identity fields `ctx` already carries.
+- **Append-only, and never on stdout.** Every write goes through
+  `core/lib/fs-safe.js#appendLineSafe`, a single `fs.appendFileSync` call
+  opened with `O_APPEND` — deliberately not the atomic
+  temp-file-then-rename `writeTextAtomic`/`writeJsonAtomic` use elsewhere in
+  this file, because several dispatch processes (a subagent spawns its own
+  per tool call) can be appending to the same day's file at the same moment,
+  and a read-modify-rewrite would let two concurrent writers race and lose a
+  line. This is purely a side channel: nothing about logging may reach
+  stdout, and nothing about it may change the decision already computed.
+- **Fails open, under the same rule as §7a.** Logging is wrapped in its own
+  `try`/`catch`, entirely separate from dispatch's own error handling — an
+  unwritable log directory, a full disk, or any other failure here must never
+  turn a dispatch into anything other than the decision already computed.
+  A logging failure surfaces only on stderr, and only under
+  `SOFTELA_AI_DEBUG=1`, through the same `debugLog` every other fail-open path in
+  this module uses. Covers both of `runDispatch`'s own return points — the
+  normal path and its outer fail-open `catch` — so a crash partway through
+  dispatch is still recorded, not only a clean pass or a rule's decision.
+- **Retention: 14 days.** After each write, `guard-activity-*.jsonl` files
+  under the same agent's log directory whose modified time is older than 14
+  days are deleted, best-effort, one file's stat/unlink failure never
+  stopping the rest from being pruned. There is no configuration for this
+  window; it is a constant in `dispatch-core.js`.
+
+---
+
+## 7c. Per-task file tally
+
+`core/lib/task-tally.js#readTaskTally` turns the guard-activity log (§7b)
+into a count of how many distinct files the CURRENT task has read and
+written, so a rule can tell "the session did this work itself" apart from
+"the session delegated it". This is a contract layered on top of §7b's own
+log-record shape, not a second log.
+
+- **What a record must carry for this to work.** Exactly the fields §7b
+  already requires of every dispatch record: `sessionId`, `agentId`,
+  `filePath`, `tool`. A record with no `filePath` is ignored. A record whose
+  `agentId` is present — a subagent's own dispatch, not the main session's —
+  is excluded from every tally outright: delegated work must never count
+  against the session that delegated it.
+- **The task boundary is the last `UserPromptSubmit` marker for this
+  session.** `modules/agent-orchestration/hooks/inject-delegation-mode.js`
+  appends one such marker — `event: "UserPromptSubmit"`, carrying only `ts`,
+  `agent`, `event` and `sessionId` — to the same day's log on every
+  main-session prompt. Only records after the last matching marker are
+  counted. A marker whose own `sessionId` is missing or `null` resets every
+  session for this agent, this one included, rather than letting a stale
+  count accumulate past a prompt boundary it cannot rule out.
+- **The read is bounded, not exhaustive.** At most the last
+  `TASK_TALLY_READ_BOUND_BYTES` (256 KiB) of the log is read. A task whose
+  own activity since its last boundary exceeds that window has its earliest
+  records silently fall outside it and never get counted. **This is the
+  deliberate safe direction to fail in**: an unusually long task is
+  under-counted, never over-counted, so a rule reading this tally can only
+  ever be too permissive because of it, never wrongly block a developer's
+  own work.
+- **The whole mechanism is fail-open, as bindingly as every other guarantee
+  in this document.** `readTaskTally` never throws, and reports `null` —
+  meaning "unknown, do not act on this" and never a guessed zero — whenever
+  the answer cannot be trusted: a missing or empty `sessionId`, a log file
+  that does not exist or cannot be read, or a read that produced no usable
+  record at all.
+- **A denial requires a trustworthy session key.** A rule reading this
+  tally MUST NOT deny when `sessionId` is `null` or the tally itself is
+  `null` — it may advise at most. Without a trustworthy session key the
+  counter cannot separate two concurrent sessions working in one repository,
+  and an over-count at the deny tier would block a developer for no reason.
+  `core/guards/delegate-bulk-reading.js` is the concrete instance of this
+  contract today (see `RULES.md`): it reaches `deny` only once both a
+  non-null `ctx.sessionId` and a resolved tally are in hand, and falls back
+  to advice, or to silence, in every other case.
+- **Softela departure from upstream.** On Codex, the tier that would
+  otherwise `deny` returns `ask` instead: Codex sends no `agent_id` on any
+  call, so a subagent's own dispatches cannot be excluded from the tally the
+  way `readTaskTally` excludes them on Claude, and denying on an uncertain
+  count would block exactly the delegated work this rule asks for. See
+  `core/guards/delegate-bulk-reading.js#tallyBasedDecision`.
 
 ---
 

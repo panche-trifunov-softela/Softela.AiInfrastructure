@@ -79,6 +79,41 @@ function overridesPath(agent) {
 }
 
 /**
+ * Formats a date the way the guard-activity log names its files.
+ *
+ * Local time, not UTC: the log is a developer-facing record of what happened
+ * during their working day, and a UTC rollover would split an evening's work
+ * across two files for anyone west of Greenwich.
+ *
+ * @param {Date} date The date to format.
+ * @returns {string} The date as `YYYY-MM-DD`.
+ */
+function formatLogDate(date) {
+  const y = date.getFullYear();
+  const m = String(date.getMonth() + 1).padStart(2, "0");
+  const d = String(date.getDate()).padStart(2, "0");
+  return `${y}-${m}-${d}`;
+}
+
+/**
+ * Resolves the guard-activity log path for one calendar day.
+ *
+ * The date is taken as an argument rather than read off the clock in here,
+ * so this helper stays testable against a fixed date instead of whatever day
+ * happens to be current when a test runs. Callers that do mean "today" format
+ * it with `formatLogDate` above, so the process writing the log and the one
+ * reading it can never disagree about which file that is.
+ *
+ * @param {string} agent `"claude"` or `"codex"`.
+ * @param {string} date The day the log covers, already formatted
+ * `YYYY-MM-DD`.
+ * @returns {string} `<stateDir>/logs/guard-activity-<date>.jsonl`.
+ */
+function guardLogPath(agent, date) {
+  return path.join(stateDir(agent), "logs", `guard-activity-${date}.jsonl`);
+}
+
+/**
  * Resolves the directory the installer copies pre-write backups into.
  *
  * @param {string} agent `"claude"` or `"codex"`.
@@ -138,6 +173,8 @@ module.exports = {
   stateDir,
   manifestPath,
   overridesPath,
+  formatLogDate,
+  guardLogPath,
   backupsDir,
   installedRoot,
   repoRoot,

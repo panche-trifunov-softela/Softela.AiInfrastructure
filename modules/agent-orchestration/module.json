@@ -5,8 +5,16 @@
   "defaultEnabled": true,
   "requires": [],
   "guards": ["subagent-model", "reasoning-effort-floor", "delegate-bulk-reading", "no-nested-delegation"],
-  "files": [],
-  "hooks": [],
+  "files": [
+    { "from": "hooks/inject-delegation-mode.js", "to": "hooks/inject-delegation-mode.js" },
+    { "from": "hooks/agent-orchestration-core-lib.js", "to": "hooks/agent-orchestration-core-lib.js" }
+  ],
+  "hooks": [
+    { "agent": "claude", "event": "UserPromptSubmit", "matcher": null,
+      "command": "{{NODE}} {{INSTALLED}}/hooks/inject-delegation-mode.js --agent=claude" },
+    { "agent": "codex", "event": "UserPromptSubmit", "matcher": null,
+      "command": "{{NODE}} {{INSTALLED}}/hooks/inject-delegation-mode.js --agent=codex" }
+  ],
   "settings": [
     { "agent": "claude", "mode": "seed", "pointer": "/model", "value": "opus" },
 

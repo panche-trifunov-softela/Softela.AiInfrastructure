@@ -41,6 +41,14 @@
  * not from the orchestrator itself. This is a Claude Code payload field;
  * Codex is not known to send an equivalent one, so a rule keying on it is
  * silent on Codex rather than wrong.
+ *
+ * `ctx.sessionId`: Codex's `PreToolUse` payload carries `session_id`
+ * (`docs/internal/CONTRACTS.md`'s own "Verified Codex payload shape"), and a
+ * real Claude Code `PreToolUse` payload was measured to carry it as well —
+ * every record in a real guard-activity log carried a non-null value. It is
+ * still a host-supplied field, not a guaranteed one, so it may be absent on a
+ * payload shape nobody has measured yet; every consumer treats `null` as
+ * "unknown" and behaves safely rather than assuming the field is always set.
  */
 
 const fs = require("fs");
@@ -458,6 +466,7 @@ function emptyContext() {
     session: { model: null, effort: null },
     agentId: null,
     agentType: null,
+    sessionId: null,
     modules: new Set(),
     overrides: { forRule: () => ({ action: undefined, allow: [], reason: undefined }), invalid: [], raw: null },
     raw: {},
@@ -553,6 +562,7 @@ function buildContext(payload, options = {}) {
 
     const agentId = firstStringOrNull(p.agent_id, p.agentId);
     const agentType = firstStringOrNull(p.agent_type, p.agentType);
+    const sessionId = firstStringOrNull(p.session_id, p.sessionId);
 
     const modules = new Set(Array.isArray(options.modules) ? options.modules : []);
     const overrides = resolveOverrides(agent, project.id, { file: options.overridesFile });
@@ -572,6 +582,7 @@ function buildContext(payload, options = {}) {
       session: { model, effort },
       agentId,
       agentType,
+      sessionId,
       modules,
       overrides,
       raw: p,

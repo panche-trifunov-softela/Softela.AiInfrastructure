@@ -16,8 +16,17 @@
 /** Narrowest terminal width {@link terminalWidth} will resolve to. */
 const MIN_WIDTH = 40;
 
-/** Widest terminal width {@link terminalWidth} will resolve to. */
-const MAX_WIDTH = 120;
+/**
+ * Widest terminal width {@link terminalWidth} will resolve to.
+ *
+ * This is a sanity ceiling, not a target: a developer's real, wide terminal
+ * should get the benefit of its own width rather than being clamped down to
+ * a guessed "reasonable" number, so this is set comfortably above any
+ * terminal size actually in use today. It exists at all only to keep a
+ * pathological `columns` value (a misreported stream, an absurd
+ * `SOFTELA_AI_COLUMNS`) from producing runaway line lengths downstream.
+ */
+const MAX_WIDTH = 240;
 
 /** Width assumed when a stream reports no usable `columns`. */
 const FALLBACK_WIDTH = 80;
@@ -149,20 +158,27 @@ function padTo(text, width) {
  *
  * Words are packed greedily, breaking to a new line before the word that
  * would overflow. A single word wider than the available width is never
- * left to overflow the line — it is hard-cut with {@link truncate} instead,
- * landing alone on its own line.
+ * left to overflow the line: by default it is hard-cut with {@link
+ * truncate} instead, landing alone on its own line; with `options.hardBreak`
+ * it is split across as many lines as it needs instead, so none of it is
+ * discarded.
  *
  * @param {string} text The text to wrap. Internal whitespace runs collapse
  * to single spaces, matching how the words are re-joined line by line.
  * @param {number} width The column width, including any `options.indent`.
- * @param {{indent?: string}} [options] `indent`, when given, is prefixed to
- * every line after the first; its own display width is subtracted from the
- * budget for those lines, so the indented text still fits within `width`.
+ * @param {{indent?: string, hardBreak?: boolean}} [options] `indent`, when
+ * given, is prefixed to every line after the first; its own display width is
+ * subtracted from the budget for those lines, so the indented text still
+ * fits within `width`. `hardBreak`, when `true`, replaces the
+ * single-oversized-word ellipsis fallback with a lossless character split —
+ * for text where every part of the original value must survive somewhere in
+ * the output, such as an aligned plan line's own column values.
  * @returns {string[]} One entry per wrapped line. `[""]` for empty or
  * whitespace-only `text`.
  */
 function wrap(text, width, options) {
   const indent = (options && options.indent) || "";
+  const hardBreak = !!(options && options.hardBreak);
   const words = String(text).trim().split(/\s+/).filter(Boolean);
   if (words.length === 0) return [""];
 
@@ -189,14 +205,30 @@ function wrap(text, width, options) {
 
     // Re-evaluate the budget: starting a fresh line may have moved us past
     // the first line, which changes whether `indent` now applies.
-    const freshBudget = budgetFor(lines.length);
+    let freshBudget = budgetFor(lines.length);
     if (displayWidth(word) <= freshBudget) {
       current = word;
-    } else {
-      // The word alone is wider than even an empty line can hold — hard-break
+      continue;
+    }
+
+    if (!hardBreak) {
+      // The word alone is wider than even an empty line can hold — hard-cut
       // it rather than let it overflow.
       lines.push(truncate(word, freshBudget));
+      continue;
     }
+
+    // Same situation, but nothing may be dropped: carve the word into as
+    // many full-width chunks as it takes, then keep going with whatever is
+    // left over on a fresh line of its own.
+    let rest = word;
+    while (displayWidth(rest) > freshBudget) {
+      const chars = Array.from(rest);
+      lines.push(chars.slice(0, freshBudget).join(""));
+      rest = chars.slice(freshBudget).join("");
+      freshBudget = budgetFor(lines.length);
+    }
+    current = rest;
   }
   if (current) lines.push(current);
 

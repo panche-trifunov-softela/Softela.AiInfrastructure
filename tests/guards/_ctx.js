@@ -210,7 +210,9 @@ function lookupFixtureFile(files, cwdForResolve, p) {
  * split between the two must set it explicitly, the same as the real
  * `buildWriteContext` always does. `agentId`/`agentType` default to `null`,
  * the shape of a main-thread tool call; a case exercising a call from inside
- * a delegated agent sets `agentId` explicitly.
+ * a delegated agent sets `agentId` explicitly. `sessionId` defaults to `null`
+ * too — the shape a host that sent no identifier produces, and the one a rule
+ * reading the per-task tally must stay silent on rather than guess at.
  *
  * @param {object} [partial] Fields to override.
  * @returns {object} A frozen context.
@@ -238,6 +240,7 @@ function makeCtx(partial = {}) {
     session: Object.assign({ model: "sonnet", effort: "high" }, partial.session || {}),
     agentId: partial.agentId !== undefined ? partial.agentId : null,
     agentType: partial.agentType !== undefined ? partial.agentType : null,
+    sessionId: partial.sessionId !== undefined ? partial.sessionId : null,
     modules: new Set(partial.modules || []),
     overrides: partial.overrides || makeOverrides(partial.overrideSpec),
     raw: partial.raw || {},

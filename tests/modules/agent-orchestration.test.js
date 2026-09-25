@@ -2,15 +2,80 @@
 
 const fs = require("fs");
 const path = require("path");
+const { execFileSync } = require("child_process");
 const { suite } = require("../harness");
 const { loadModule, validateModuleJson, runInstall, snapshotAgentHome, sj, st, paths } = require("./_helpers");
 const { decide } = require("../guards/_ctx");
 const subagentModel = require("../../core/guards/subagent-model");
 const reasoningEffortFloor = require("../../core/guards/reasoning-effort-floor");
+const { guardLogPath, formatLogDate } = require("../../core/lib/paths");
 
 const MODULE_ID = "agent-orchestration";
+const HOOK_SCRIPT = path.join(paths.repoRoot(), "modules", MODULE_ID, "hooks", "inject-delegation-mode.js");
 
-suite("modules/agent-orchestration", ({ test, eq, deepEq, ok, fakeHome }) => {
+/**
+ * Runs `inject-delegation-mode.js` as a real subprocess, exactly the way the
+ * installed dispatcher command invokes it — through stdin and a `--agent=`
+ * argument, never by requiring its internals.
+ *
+ * @param {string} agentHome A disposable `SOFTELA_AI_HOME`, so the log this
+ * hook appends to is isolated per test.
+ * @param {string} agent `"claude"` or `"codex"`.
+ * @param {string} rawInput The exact text written to stdin.
+ * @returns {string} The process's stdout, `""` for a silent pass.
+ */
+function runHookRaw(agentHome, agent, rawInput) {
+  return execFileSync(process.execPath, [HOOK_SCRIPT, `--agent=${agent}`], {
+    input: rawInput,
+    encoding: "utf8",
+    env: { ...process.env, SOFTELA_AI_HOME: agentHome },
+  });
+}
+
+/**
+ * Runs `inject-delegation-mode.js` with a JSON-encoded payload on stdin.
+ *
+ * @param {string} agentHome A disposable `SOFTELA_AI_HOME`.
+ * @param {string} agent `"claude"` or `"codex"`.
+ * @param {object} payload The payload to serialise onto stdin.
+ * @returns {string} The process's stdout, `""` for a silent pass.
+ */
+function runHook(agentHome, agent, payload) {
+  return runHookRaw(agentHome, agent, JSON.stringify(payload));
+}
+
+/**
+ * Reads back every parsed JSON line from today's guard-activity log for one
+ * agent, under a given `SOFTELA_AI_HOME`.
+ *
+ * @param {string} agentHome The `SOFTELA_AI_HOME` the hook was run against.
+ * @param {string} agent `"claude"` or `"codex"`.
+ * @returns {object[]} Every line that parsed as JSON, in file order; `[]`
+ * when the log does not exist.
+ */
+function readLogRecords(agentHome, agent) {
+  const previous = process.env.SOFTELA_AI_HOME;
+  process.env.SOFTELA_AI_HOME = agentHome;
+  try {
+    const logPath = guardLogPath(agent, formatLogDate(new Date()));
+    let text;
+    try {
+      text = fs.readFileSync(logPath, "utf8");
+    } catch {
+      return [];
+    }
+    return text
+      .split("\n")
+      .map((line) => line.trim())
+      .filter(Boolean)
+      .map((line) => JSON.parse(line));
+  } finally {
+    if (previous === undefined) delete process.env.SOFTELA_AI_HOME;
+    else process.env.SOFTELA_AI_HOME = previous;
+  }
+}
+
+suite("modules/agent-orchestration", ({ test, eq, deepEq, ok, fakeHome, tmpdir }) => {
   const mod = loadModule(MODULE_ID);
 
   test("module.json validates against the shape MODULES.md documents", () => {
@@ -35,6 +100,102 @@ suite("modules/agent-orchestration", ({ test, eq, deepEq, ok, fakeHome }) => {
 
   test("ships no prompt.md of its own — only module.json and README.md", () => {
     eq(mod.json.prompt, undefined);
+  });
+
+  test("declares the delegation-mode reminder hook, and its script is a readable file", () => {
+    const hookToPaths = mod.json.files.map((f) => f.to);
+    deepEq(hookToPaths, ["hooks/inject-delegation-mode.js", "hooks/agent-orchestration-core-lib.js"]);
+  });
+
+  test("registers inject-delegation-mode.js on UserPromptSubmit for both agents, each with its own --agent= flag", () => {
+    const events = mod.json.hooks.map((h) => `${h.agent}:${h.event}`).sort();
+    deepEq(events, ["claude:UserPromptSubmit", "codex:UserPromptSubmit"]);
+    for (const h of mod.json.hooks) {
+      eq(h.matcher, null);
+      ok(h.command.includes("inject-delegation-mode.js"), `command should invoke inject-delegation-mode.js, got: ${h.command}`);
+      ok(h.command.includes(`--agent=${h.agent}`), `command should pass --agent=${h.agent}, got: ${h.command}`);
+    }
+  });
+
+  /* -------------------------------------------------- inject-delegation-mode.js */
+
+  test("inject-delegation-mode: a main-session prompt carries additionalContext and no systemMessage key at all", () => {
+    const agentHome = tmpdir();
+    const out = runHook(agentHome, "claude", { hook_event_name: "UserPromptSubmit", session_id: "s1", cwd: process.cwd(), prompt: "do the thing" });
+    const parsed = JSON.parse(out);
+    ok(
+      parsed.hookSpecificOutput.additionalContext.startsWith("Before you read or edit several files yourself: you are the orchestrator"),
+      `expected the delegation-mode reminder, got: ${out}`,
+    );
+    eq(parsed.hookSpecificOutput.hookEventName, "UserPromptSubmit");
+    ok(!Object.prototype.hasOwnProperty.call(parsed, "systemMessage"), "the developer must see nothing at all");
+  });
+
+  test("inject-delegation-mode: a subagent's payload (agent_id set) produces no output whatsoever", () => {
+    const agentHome = tmpdir();
+    const out = runHook(agentHome, "claude", {
+      hook_event_name: "UserPromptSubmit",
+      session_id: "s1",
+      agent_id: "01a0-abc",
+      agent_type: "default",
+      prompt: "do the thing",
+    });
+    eq(out, "");
+  });
+
+  test("inject-delegation-mode: unparseable stdin produces no output and exits 0", () => {
+    const agentHome = tmpdir();
+    const out = runHookRaw(agentHome, "claude", "{not json at all");
+    eq(out, "");
+  });
+
+  test("inject-delegation-mode: appends a task-boundary marker line carrying exactly ts, agent, event and sessionId", () => {
+    const agentHome = tmpdir();
+    runHook(agentHome, "codex", { hook_event_name: "UserPromptSubmit", session_id: "sess-42", prompt: "do the thing" });
+
+    const records = readLogRecords(agentHome, "codex");
+    eq(records.length, 1, `expected exactly one marker line, got: ${JSON.stringify(records)}`);
+    const record = records[0];
+    deepEq(Object.keys(record).sort(), ["agent", "event", "sessionId", "ts"]);
+    eq(record.agent, "codex");
+    eq(record.event, "UserPromptSubmit");
+    eq(record.sessionId, "sess-42");
+    ok(!Number.isNaN(Date.parse(record.ts)), `ts should be a parseable ISO date, got: ${record.ts}`);
+  });
+
+  test("inject-delegation-mode: sessionId falls back to null when the payload carries neither session_id nor sessionId", () => {
+    const agentHome = tmpdir();
+    runHook(agentHome, "claude", { hook_event_name: "UserPromptSubmit", prompt: "do the thing" });
+
+    const records = readLogRecords(agentHome, "claude");
+    eq(records.length, 1);
+    eq(records[0].sessionId, null);
+  });
+
+  test("inject-delegation-mode: a log path that cannot be written still lets the reminder print", () => {
+    const agentHome = tmpdir();
+    // Puts a FILE where the log's own parent directory (the logs/ folder
+    // under the state directory) needs to be — appendLineSafe's mkdir then
+    // fails, and the append must be swallowed rather than blocking the
+    // reminder.
+    const previous = process.env.SOFTELA_AI_HOME;
+    process.env.SOFTELA_AI_HOME = agentHome;
+    let logsDirAsFile;
+    try {
+      logsDirAsFile = path.dirname(guardLogPath("claude", formatLogDate(new Date())));
+      fs.mkdirSync(path.dirname(logsDirAsFile), { recursive: true });
+      fs.writeFileSync(logsDirAsFile, "not a directory", "utf8");
+    } finally {
+      if (previous === undefined) delete process.env.SOFTELA_AI_HOME;
+      else process.env.SOFTELA_AI_HOME = previous;
+    }
+
+    const out = runHook(agentHome, "claude", { hook_event_name: "UserPromptSubmit", session_id: "s1", prompt: "do the thing" });
+    const parsed = JSON.parse(out);
+    ok(
+      parsed.hookSpecificOutput.additionalContext.startsWith("Before you read or edit several files yourself: you are the orchestrator"),
+      `the reminder must still print even though the log append failed, got: ${out}`,
+    );
   });
 
   /* ------------------------------------------------- guard activation gate */

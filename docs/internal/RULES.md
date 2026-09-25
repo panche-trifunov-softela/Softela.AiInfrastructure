@@ -799,30 +799,81 @@ the cost saved is not worth the second attempt. Recognised ladder:
 `minimal < low < medium < high < xhigh < max < ultra`. An unrecognised value
 passes.
 
-### `delegate-bulk-reading` · advisory ask · `requiresModule: "agent-orchestration"`
-A shell command shaped like a survey of the codebase rather than like
-ordinary work: a search that sweeps a tree (`grep -r`, or `rg` with no file
-argument), or a read command naming four or more distinct files. Advises
-spawning a subagent for it.
+### `delegate-bulk-reading` · deny / ask (advisory) · `requiresModule: "agent-orchestration"`
+Two independent signals feed this rule, not one:
 
-`advisoryAsk: true`, so it surfaces as advice on both hosts and can never
-block. That is the whole design, not a softening: the same command shape is
-produced by reviewing a subagent's diff, which the rulebook requires, and no
-hook can tell the two apart.
+- **The task's own file tally** (`core/lib/task-tally.js#readTaskTally`) —
+  how many distinct files the CURRENT task has read or written directly,
+  counted from the guard-activity log since the session's own last prompt
+  (`CONTRACTS.md` §7c). This is the tier that can escalate to a real `deny`,
+  because it is evidence of what already happened, not a guess about one
+  command's shape.
+- **A shell command's own shape** — the original, advisory-only heuristic: a
+  search that sweeps a tree (`grep -r`, or `rg` with no file argument), or a
+  read command naming four or more distinct files.
+
+The rule now applies to `Read`, `Write` and `Edit` (and their Codex
+equivalents, matched through `core/lib/read-tools.js#isReadToolName` and
+`core/lib/write-decode.js#isWriteToolName`) as well as to a shell call. A
+plain file read or write has no command line to parse, so it is judged
+purely on the tally; only a shell call ever falls through to the
+shell-shape heuristic.
+
+Two thresholds, read from `ctx.project.delegation.adviseAt` /
+`ctx.project.delegation.denyAt`, defaulting to 5 and 15
+(`projects/_default.json`, `core/schema/project.schema.json`):
+
+| Case | Action |
+|---|---|
+| tally's count ≥ `denyAt`, with a non-null `ctx.sessionId` and a resolved tally | deny |
+| tally's count ≥ `adviseAt` and below `denyAt` | ask |
+| tally's count below `adviseAt`, or no `ctx.sessionId`, or the tally itself unresolved (`null`) | falls through to the shell-shape heuristic |
+| a shell command shaped like a tree search, or naming four or more distinct files | ask |
+| everything else | pass |
+
+**`deny` requires a trustworthy session key.** `readTaskTally` never
+computes a count without a non-empty `ctx.sessionId` to key it on, and this
+rule never denies without one either: without a session key the counter
+cannot separate two concurrent sessions working in one repository, and an
+over-count at the deny tier would block a developer for a task that was not
+theirs. Every failure mode here — a missing log, an unreadable one, an empty
+session id, a `null` tally — is fail-open in the safe direction: it falls
+back to exactly the shell-shape heuristic, never to something stricter, and
+a task long enough to exceed the log's own bounded tail read
+(`TASK_TALLY_READ_BOUND_BYTES`, 256 KiB) is under-counted, never
+over-counted.
+
+**Softela departure from upstream: on Codex the tally tier never denies.**
+A Codex hook payload carries no `agent_id`, so a Codex subagent's own bulk
+reading cannot be told apart from the orchestrator's, and a subagent session
+with no `UserPromptSubmit` marker of its own is counted from the start of
+the day's log — denying it would block exactly the delegated work this rule
+exists to encourage. `evaluate` checks `ctx.agent === "codex"`: a count that
+would otherwise deny returns the `ask` tier instead, with a reason stating
+that the limit was reached and that Codex cannot tell a subagent apart, so
+this stays advice there.
+
+`advisoryAsk: true` still governs every `ask` this rule returns — surfaced
+as advice on both hosts and never blocking. It does not govern `deny`: the
+tally-backed `deny` tier is the one case this rule can genuinely stop a
+call, and only once the safeguard above is satisfied, and only on Claude.
 
 Deliberately narrow, because an advisory rule that fires on ordinary work is
 worse than one that is switched off — it stays on and teaches an agent to
-ignore the channel. Silent on: a search inside one named file; a locator
-search (`-l`, `-L`, `-c`, `--files-with-matches`, `--count`), which returns
-paths or a number rather than content; three files or fewer; a bare-word
-argument that is not file-shaped; and `-r` on a command that is not a search,
-such as `cp -r` or `rm -rf`; a survey whose output is piped into `head`,
-`tail`, `wc`, or `sort` feeding one of those, which caps what reaches the
-context exactly the way a locator flag does; and every call made from inside
-a delegated agent (`ctx.agentId` set), since the advice is addressed to an
-orchestrator choosing whether to delegate, a subagent has nothing further to
-delegate to, and telling it to spawn one is the nesting
-`no-nested-delegation` forbids.
+ignore the channel. Silent on: every call made from inside a delegated agent
+(`ctx.agentId` set), since the advice is addressed to an orchestrator
+choosing whether to delegate, a subagent has nothing further to delegate to,
+and telling it to spawn one is the nesting `no-nested-delegation` forbids;
+no `ctx.sessionId` at all, or `readTaskTally` returning `null` for any other
+reason, in which case the tally has nothing to say and only the shell-shape
+heuristic can still fire, and only for a shell call; a tally below
+`adviseAt`; a search inside one named file; a locator search (`-l`, `-L`,
+`-c`, `--files-with-matches`, `--count`), which returns paths or a number
+rather than content; three files or fewer; a bare-word argument that is not
+file-shaped; `-r` on a command that is not a search, such as `cp -r` or
+`rm -rf`; and a survey whose output is piped into `head`, `tail`, `wc`, or
+`sort` feeding one of those, which caps what reaches the context exactly the
+way a locator flag does.
 
 ### `no-nested-delegation` · deny · `requiresModule: "agent-orchestration"`
 A subagent spawn made from inside a subagent. Delegation runs one level
