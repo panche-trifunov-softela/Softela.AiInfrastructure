@@ -1115,7 +1115,22 @@ by hand (see `RULES.md`'s `reuse-before-new` entry).
     preference rather than a rule: model choice, reasoning effort, approval
     policy, sandbox mode. A developer running a stronger model than our default
     must not be quietly downgraded by an update, and this is the mechanism that
-    guarantees it.
+    guarantees it. Scalar host configuration that is not a hook registration
+    at all is seeded the same way: Codex's `hooks.json` top-level
+    `description`, and Claude Code's `settings.json` top-level `attribution`
+    object (`{ commitTrailers: false, pr: "", sessionUrl: false }`,
+    `core/installer/plan.js#planHooks`) — the host-level switch that stops
+    Claude Code producing an AI-attribution trailer in the first place,
+    turned off only where a developer has not already chosen a value of
+    their own — no AI-attribution/co-author trailer in a commit or PR body is
+    already this tool's own universal policy (the `commit-message` guard
+    denies one unconditionally, for every project, `requiresConfig: []`;
+    `modules/memory-as-context/seed/softela-git-flow.md` states the same rule in
+    words, though `docs/standards/git-flow.md` itself does not mention
+    attribution). The `commit-message` guard stays in force alongside it — it
+    is the only lever on Codex, and it is blind to a commit with no `-m`/`-F`
+    for it to read a message out of at all, such as
+    an editor-driven commit or one built from a `git commit.template`.
 
     The target file itself may not exist yet either — a fresh machine that has
     never launched Codex has no `config.toml` at all, and that is the most

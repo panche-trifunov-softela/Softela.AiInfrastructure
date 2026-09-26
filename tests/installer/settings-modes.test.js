@@ -13,7 +13,7 @@ const { suite } = require("../harness");
 const { runCli, seedForeign, agentHomePath, readSettingsJson, readText, findHookEntries } = require("./_home");
 const { writeJsonAtomic: writeJson } = require("../../core/lib/fs-safe");
 
-suite("installer/settings-modes", ({ test, eq, ok, fakeHome }) => {
+suite("installer/settings-modes", ({ test, eq, deepEq, ok, fakeHome }) => {
   test("[claude] a seed setting already present before install is never overwritten by the shipped default", () => {
     const home = fakeHome();
     seedForeign(home, "claude"); // sets model: "opus-4-custom"
@@ -100,6 +100,43 @@ suite("installer/settings-modes", ({ test, eq, ok, fakeHome }) => {
     eq(runCli(home, ["install", "--agent", "codex", "--yes"]).code, 0);
     const after = readSettingsJson(home, "codex");
     ok(typeof after.description === "string" && after.description.length > 0, "an absent description must be seeded, not left missing");
+  });
+
+  test("[claude] attribution is absent before install and is seeded off (git-flow.md / softela-git-flow.md: no AI-attribution trailer)", () => {
+    const home = fakeHome();
+    const foreign = seedForeign(home, "claude");
+    const before = JSON.parse(readText(foreign.settingsPath));
+    ok(!("attribution" in before), "the fixture must start without an attribution key for this to test anything");
+
+    eq(runCli(home, ["install", "--agent", "claude", "--yes"]).code, 0);
+    deepEq(readSettingsJson(home, "claude").attribution, { commitTrailers: false, pr: "", sessionUrl: false });
+  });
+
+  test("[claude] a developer's own attribution value is never overwritten by the shipped default", () => {
+    const home = fakeHome();
+    const foreign = seedForeign(home, "claude");
+    const before = JSON.parse(readText(foreign.settingsPath));
+    before.attribution = { commitTrailers: true };
+    writeJson(foreign.settingsPath, before);
+
+    eq(runCli(home, ["install", "--agent", "claude", "--yes"]).code, 0);
+    deepEq(
+      readSettingsJson(home, "claude").attribution,
+      { commitTrailers: true },
+      "a developer who deliberately kept attribution on must keep it — seed mode never overwrites a present key",
+    );
+
+    eq(runCli(home, ["update", "--agent", "claude", "--yes"]).code, 2);
+    deepEq(readSettingsJson(home, "claude").attribution, { commitTrailers: true }, "an update must not downgrade this either");
+  });
+
+  test("[codex] nothing is written for attribution — Codex adds no such trailer, so there is no host switch to seed", () => {
+    const home = fakeHome();
+    const foreign = seedForeign(home, "codex");
+
+    eq(runCli(home, ["install", "--agent", "codex", "--yes"]).code, 0);
+    ok(!("attribution" in readSettingsJson(home, "codex")), "hooks.json must not gain an attribution key on Codex");
+    ok(!readText(foreign.configPath).includes("attribution"), "config.toml must not gain an attribution key on Codex");
   });
 
   test("[codex] seed keys absent in config.toml are added, preserving comments and key order", () => {

@@ -431,6 +431,45 @@ function planHooks(ctx, actions, pendingAppends) {
       value: ctx.fragment.description,
     });
   }
+
+  // Claude Code's own `settings.json` carries an `attribution` object that
+  // controls trailers the host adds to commits and PR descriptions on its
+  // own — a host-configuration switch, not a hook registration. The shared
+  // `commit-message` guard (`core/guards/commit-message.js`) already denies
+  // a co-author/AI-attribution trailer unconditionally, for every project
+  // this tool installs into — no `requiresConfig`, never softened by a
+  // project file — so "no AI-attribution trailer" is already this
+  // repository's own universal policy, not merely one project's preference;
+  // `docs/standards/git-flow.md` itself is silent on attribution
+  // specifically, but `modules/memory-as-context/seed/softela-git-flow.md`
+  // states the same rule in words: "No `Co-Authored-By: Claude` /
+  // AI-attribution trailer in commits or PR bodies". That guard's own
+  // `resolveMessage` returns `message: null` — the check never runs at all —
+  // for an editor-driven commit or one built from a `git commit.template`,
+  // since neither carries a `-m`/`-F` for it to read a message out of.
+  // Configuring the host not to produce the trailer in the first place
+  // closes exactly that gap; the guard stays in force alongside it, since it
+  // is the only lever this tool has on Codex at all. Like Codex's
+  // `description` above, this is scalar host configuration a developer may
+  // have deliberately chosen to override, so CONTRACTS §9 licenses it only
+  // as `seed`: written once, when absent, never overwriting a developer's
+  // own choice to keep attribution on.
+  if (ctx.fragment.attribution && typeof ctx.fragment.attribution === "object") {
+    const info = sj.planSeedKey(ctx.settings.content, "/attribution");
+    actions.push({
+      kind: "settings",
+      agent: ctx.agent,
+      target: ctx.settingsFile,
+      pointer: "/attribution",
+      mode: "seed",
+      state: info.present ? "current" : "new",
+      action: info.action,
+      reason: info.present
+        ? "attribution present — left alone"
+        : "seeding attribution off (git-flow.md / softela-git-flow.md: no AI-attribution trailer)",
+      value: ctx.fragment.attribution,
+    });
+  }
 }
 
 /**
