@@ -88,6 +88,10 @@
       "to": "seed/ignore-repo-instruction-files.md"
     },
     {
+      "from": "seed/infra-test-run-resource-cap.md",
+      "to": "seed/infra-test-run-resource-cap.md"
+    },
+    {
       "from": "seed/keep-memory-synced-with-code.md",
       "to": "seed/keep-memory-synced-with-code.md"
     },

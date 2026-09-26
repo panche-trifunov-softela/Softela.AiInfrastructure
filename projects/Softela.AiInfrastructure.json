@@ -35,6 +35,11 @@
         "pattern": "\\bnpm\\s+(install|i|add)\\b",
         "action": "deny",
         "reason": "this repository declares no dependencies and must keep it that way — it installs onto machines whose Node version we do not control, and every dependency is a new way for the install to fail"
+      },
+      {
+        "pattern": "(?<!SOFTELA_AI_TEST_WORKERS=\\S+\\s)\\b(?:npm\\s+test\\b|npm\\s+run\\s+test(?::strict-skips)?(?=\\s|$)|node\\s+tests[\\\\/]run\\.js\\b)(?!.*(?:--workers|SOFTELA_AI_TEST_WORKERS))(?!\\s+[^\\s-])",
+        "action": "deny",
+        "reason": "an uncapped run pools one worker per CPU core, and several of this suite's tests shell out to the real CLI from inside a worker, multiplying that into several times as many live node processes on a machine an agent is meant to keep using for other work at the same time (modules/memory-as-context/seed/infra-test-run-resource-cap.md). Run `npm run test:capped` instead (node tests/run.js --workers 6), or pass --workers/SOFTELA_AI_TEST_WORKERS yourself for a filtered or --strict-skips run"
       }
     ]
   },

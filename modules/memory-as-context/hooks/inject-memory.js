@@ -86,7 +86,7 @@ function readBoundedFromEnd(filePath) {
   try {
     const text = fs.readFileSync(filePath, "utf8");
     if (text.length <= MAX_BYTES) return text;
-    return `...(earlier turns truncated — read the checkpoint file in full)\n\n${text.slice(text.length - MAX_BYTES)}`;
+    return `...(earlier turns truncated — read ${path.basename(filePath)} in full)\n\n${text.slice(text.length - MAX_BYTES)}`;
   } catch {
     return null;
   }

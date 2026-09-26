@@ -18,6 +18,7 @@
     "remove": "node bin/softela-ai uninstall",
     "test": "node tests/run.js",
     "test:strict-skips": "node tests/run.js --strict-skips",
+    "test:capped": "node tests/run.js --workers 6",
     "build:standard": "node tools/build-standard.js",
     "build:check": "node tools/build-standard.js --check"
   }

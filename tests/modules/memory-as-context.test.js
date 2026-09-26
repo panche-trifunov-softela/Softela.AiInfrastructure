@@ -1183,17 +1183,22 @@ suite("modules/memory-as-context", ({ test, eq, deepEq, ok, notThrows, tmpdir, f
     eq(fs.readFileSync(checkpointFile, "utf8"), existing, "fewer turns than already recorded must never overwrite");
   });
 
-  test("compact-checkpoint: retention keeps the 20 most recently modified checkpoints", () => {
+  test("compact-checkpoint: retention keeps the 1000 most recently modified checkpoints", () => {
+    // MAX_CHECKPOINTS in compact-checkpoint.js is 1000 — mirrored here as a
+    // literal rather than derived from an export, since both hook scripts in
+    // this module run their whole body unconditionally at the bottom of the
+    // file (`run().catch(...)`), so requiring either as a module to reach its
+    // constant would execute that body as a side effect of the require.
     const agentHome = tmpdir();
     const cwd = tmpdir();
     const checkpointsDir = path.join(homeMemoryRoot(agentHome), "checkpoints");
     fs.mkdirSync(checkpointsDir, { recursive: true });
 
     const now = Date.now();
-    for (let i = 0; i < 20; i++) {
+    for (let i = 0; i < 1000; i++) {
       const file = path.join(checkpointsDir, `old-${i}.md`);
       fs.writeFileSync(file, `<!-- softela-ai-checkpoint turns=1 agent=claude trigger=manual -->\nold ${i}\n`);
-      const t = new Date(now - (20 - i) * 60000);
+      const t = new Date(now - (1000 - i) * 60000);
       fs.utimesSync(file, t, t);
     }
 
@@ -1208,7 +1213,7 @@ suite("modules/memory-as-context", ({ test, eq, deepEq, ok, notThrows, tmpdir, f
     });
 
     const remaining = fs.readdirSync(checkpointsDir).filter((f) => f.endsWith(".md"));
-    eq(remaining.length, 20, "retention must keep exactly 20 checkpoints");
+    eq(remaining.length, 1000, "retention must keep exactly 1000 checkpoints");
     ok(remaining.includes("newest.md"), "the just-written checkpoint must survive pruning");
     ok(!remaining.includes("old-0.md"), "the oldest checkpoint must be the one pruned");
   });
@@ -1319,6 +1324,7 @@ suite("modules/memory-as-context", ({ test, eq, deepEq, ok, notThrows, tmpdir, f
     const parsed = JSON.parse(out);
     ok(parsed.hookSpecificOutput.additionalContext.includes("the most recent turn must survive"), "the newest content must survive truncation");
     ok(!parsed.hookSpecificOutput.additionalContext.includes(big), "the oldest content must have been truncated away");
+    ok(parsed.hookSpecificOutput.additionalContext.includes("sess-big.md"), "the truncation marker must name the checkpoint file to open");
   });
 
   /* --------------------------------------------------------- crash safety */

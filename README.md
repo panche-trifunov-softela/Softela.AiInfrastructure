@@ -29,6 +29,12 @@ directories, and it backs up every file it modifies first.
 Everything is **copied**, never linked. You can delete this clone afterwards
 and your installation keeps working.
 
+Having an AI agent do the install instead? Paste
+[`docs/guide/softela-ai-agent-install-plan.md`](docs/guide/softela-ai-agent-install-plan.md)
+into a Claude Code or Codex session on that machine. It takes the agent
+through backup, preview and apply, waits for your yes before anything is
+written, and marks the steps only you can do.
+
 ## Getting the `softela-ai` command
 
 The three commands above need no setup, but they only cover the common cases
@@ -167,10 +173,22 @@ Two things behave differently from Claude Code:
 ## Contributing
 
 ```
-npm test                      # the whole suite
+npm run test:capped           # the whole suite, worker-capped — use this from an agent session
+npm test                      # the whole suite, full parallelism — for a human or CI
 node tests/run.js guards      # one area
 node tests/run.js guards/no-push-to-base   # one rule
 ```
+
+An uncapped run forks one worker per CPU core, and several suites shell out to
+the real CLI from inside a worker, so a default run can start many node
+processes at once. That is fine for CI, but not for a machine an agent is
+meant to keep using. `npm run test:capped` (`node tests/run.js --workers 6`)
+is the agent-facing default. This repository's project config denies the
+uncapped forms (`npm test`, `npm run test:strict-skips`, a bare
+`node tests/run.js`) when they run without `--workers` or
+`SOFTELA_AI_TEST_WORKERS`, and points back to
+`modules/memory-as-context/seed/infra-test-run-resource-cap.md`. A filtered
+run, like the `guards` examples above, is unaffected.
 
 A new rule is one file in `core/guards/` plus one table-driven suite in
 `tests/guards/`, with **more negative cases than positive ones** — a rule that

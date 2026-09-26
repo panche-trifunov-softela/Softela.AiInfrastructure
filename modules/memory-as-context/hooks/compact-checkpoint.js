@@ -38,8 +38,23 @@ const { parseArgs, resolveMemoryDir, ensureSelfIgnored, findGitRoot, sanitize, U
 const { extractDeveloperTurns, renderCheckpoint, parseCheckpointTurnCount, checkpointPath } = require("./transcript");
 const { readStdin } = require("./stdin");
 
-/** How many most-recently-modified checkpoint files survive a pruning pass. */
-const MAX_CHECKPOINTS = 20;
+/**
+ * How many most-recently-modified checkpoint files survive a pruning pass in
+ * {@link pruneCheckpoints}. Each file is one session's worth of the
+ * developer's own verbatim pre-compaction turns, so this bounds how many past
+ * sessions' checkpoints stay recoverable on disk at once, not how much
+ * content injection reads for the current session (only the single most
+ * relevant file is read, by {@link resolveCheckpointFile} in
+ * `inject-memory.js`). {@link pruneCheckpoints}'s own cost is one directory
+ * listing plus one `stat` per file — trivial even at this size.
+ *
+ * A checkpoint file is the developer's only verbatim record of what they
+ * typed before a compaction — once the transcript itself is gone, nothing
+ * else preserves it. This cap is a backstop against an unbounded directory,
+ * not a budget to spend down: 1000 keeps a long developer history of
+ * sessions recoverable on disk while still pruning anything genuinely stale.
+ */
+const MAX_CHECKPOINTS = 1000;
 
 /** Timeout for each `git` call, so an unresponsive repository can never hang compaction. */
 const GIT_TIMEOUT_MS = 3000;
