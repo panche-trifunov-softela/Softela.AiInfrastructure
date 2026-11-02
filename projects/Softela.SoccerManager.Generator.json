@@ -1,0 +1,19 @@
+{
+  "$schema": "../core/schema/project.schema.json",
+  "id": "Softela.SoccerManager.Generator",
+  "stack": "backend",
+
+  "match": {
+    "remotes": ["*/Softela.SoccerManager.Generator"],
+    "paths": ["Softela.SoccerManager.Generator"]
+  },
+
+  "baseBranches": ["main"],
+  "releaseBranchPattern": "^releases/",
+
+  "branchNaming": {
+    "pattern": "^(feature|bugfix|fix|hotfix)/((task|ticket)[_-])?[A-Za-z0-9][\\w.-]*$",
+    "action": "ask",
+    "preferred": "feature/short-description"
+  }
+}
