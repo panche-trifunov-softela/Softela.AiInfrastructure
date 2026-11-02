@@ -54,6 +54,11 @@
       "path": "**/appsettings*.json",
       "action": "ask",
       "reason": "a .NET settings file is where a connection string, an API key or a client secret ends up, and unlike a .env it is normally tracked — so a value written here reaches everyone who pulls"
+    },
+    {
+      "path": "**/local.settings.json",
+      "action": "ask",
+      "reason": "an Azure Functions app's local settings file holds the connection strings and secrets for this machine; like a .env it stays out of git, and it is neither committed nor edited on the developer's behalf"
     }
   ],
 

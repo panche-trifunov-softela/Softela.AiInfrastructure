@@ -69,8 +69,14 @@ const AGENTS = ["claude", "codex"];
  * listed here by construction, so the catalogue grows by roughly nine lines
  * per rule — the cost of a new rule is partly paid out of this budget, which
  * is exactly the trade this ceiling exists to make visible.
+ *
+ * Raised from 460 when `Softela.SoccerManager.Generator` got its project
+ * config and `_default` gained the `local.settings.json` protection. The
+ * repository facts and defaults are rendered from `projects/` by
+ * construction, so a new project costs roughly five lines and a new default
+ * protected path roughly four; the headroom left is about one project.
  */
-const MAX_BODY_LINES = 460;
+const MAX_BODY_LINES = 470;
 
 /**
  * The column this module wraps generated prose to — matching the width
