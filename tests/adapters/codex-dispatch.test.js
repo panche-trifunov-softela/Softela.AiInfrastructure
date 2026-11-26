@@ -119,6 +119,32 @@ suite("adapters/codex-dispatch", ({ test, eq, ok, tmpdir }) => {
     );
   });
 
+  /* ------------------------------------------------------------ advisory ask */
+
+  test("an uncertain-target shell write is advised as additionalContext under the default askMode, not blocked", () => {
+    const home = tmpdir();
+    const cwd = tmpdir();
+    const result = runDispatcher(CODEX_DISPATCH, shellPayload(["sh", "-c", 'cmd > "$OUT"'], cwd), { home, cwd });
+    eq(result.code, 0);
+    ok(result.parsed !== null, "an uncertain write must still be reported");
+    const out = result.parsed.hookSpecificOutput;
+    eq(out.permissionDecision, undefined, "a nudge must not block on Codex");
+    ok(out.additionalContext.includes("shell-file-write"), "the advisory should name the rule");
+    ok(out.additionalContext.includes("Fix:"), "the advisory should carry the fix");
+  });
+
+  test("an uncertain-target shell write is still advised, not blocked, under askMode block", () => {
+    const home = tmpdir();
+    const cwd = tmpdir();
+    writeState(home, "codex", { modules: [], adapterOptions: { askMode: "block" } });
+    const result = runDispatcher(CODEX_DISPATCH, shellPayload(["sh", "-c", 'cmd > "$OUT"'], cwd), { home, cwd });
+    eq(result.code, 0);
+    ok(result.parsed !== null, "an uncertain write must still be reported");
+    const out = result.parsed.hookSpecificOutput;
+    eq(out.permissionDecision, undefined, "a nudge is advised even when askMode blocks genuine asks");
+    ok(out.additionalContext.includes("shell-file-write"), "the advisory should name the rule");
+  });
+
   /* --------------------------------------------------------- host invariants */
 
   test("invariant: this host never emits permissionDecision: ask", () => {

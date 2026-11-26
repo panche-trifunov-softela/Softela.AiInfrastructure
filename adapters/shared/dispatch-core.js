@@ -17,7 +17,7 @@ const { readJson, appendLineSafe } = require("../../core/lib/fs-safe");
 const { stateDir, guardLogPath, formatLogDate } = require("../../core/lib/paths");
 const { buildContext, makeReadFile, makeFileExists, makeStatFile, makeWithinReach, resolveFilePath } = require("../../core/lib/context");
 const engine = require("../../core/engine");
-const { severity } = require("../../core/lib/decision");
+const { outranks } = require("../../core/lib/decision");
 const { readStdin, parsePayload } = require("../../core/lib/hook-stdin");
 const { extractOperations } = require("../../core/lib/codex-exec");
 const { resolveWorkdir, extractShellWorkdir } = require("../../core/lib/workdir");
@@ -647,7 +647,7 @@ function evaluateDecodedWrites(ctx, options) {
   for (const write of writes) {
     const decision = engine.evaluate(buildWriteContext(ctx, write), options);
     if (!decision) continue;
-    if (!best || severity(decision.action) > severity(best.action)) best = decision;
+    if (outranks(decision, best)) best = decision;
   }
   return { handled: true, decision: best, advisory: null };
 }
@@ -664,7 +664,8 @@ function evaluateDecodedWrites(ctx, options) {
  * @returns {{decision: null | {action: string, reason: string, fix?: string, ruleId: string}, advisory: null | string}}
  * `decision` is the most severe result among every extracted operation, its
  * reason naming which one produced it — ties broken by extraction order, the
- * same "earliest wins" precedence `core/engine.js` itself uses for rules.
+ * same "earliest wins" precedence `core/engine.js` itself uses for rules,
+ * except that a genuine `ask` displaces an advisory one (`outranks`).
  * `advisory` is set only when nothing denied or asked, and at least one
  * operation could not be extracted at all.
  */
@@ -686,7 +687,7 @@ function evaluateExecCall(ctx, source, options) {
     const opCtx = buildOperationContext(ctx, op);
     const decision = engine.evaluate(opCtx, options);
     if (!decision) continue;
-    if (!best || severity(decision.action) > severity(best.decision.action)) {
+    if (outranks(decision, best && best.decision)) {
       best = { decision, op };
     }
   }

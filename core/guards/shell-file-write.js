@@ -244,6 +244,18 @@ module.exports = {
   events: ["PreToolUse"],
   tools: SHELL_TOOLS,
   defaultAction: "deny",
+
+  /**
+   * The rule's one `ask` is the uncertain-target case: a write whose path
+   * could not be extracted. That is a nudge for the agent — the reason and fix
+   * reach it as context and it can confirm the path or switch to the write
+   * tool — not a question the developer can usefully answer, least of all for
+   * a subagent that cannot answer a prompt at all. The deny for a certain
+   * target on a governed extension is unaffected and stays the hard stop. See
+   * `core/engine.js`'s step 10.
+   */
+  advisoryAsk: true,
+
   group: "agent",
   requiresConfig: [],
   requiresModule: null,

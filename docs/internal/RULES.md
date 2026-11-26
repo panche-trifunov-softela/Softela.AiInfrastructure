@@ -259,7 +259,7 @@ Deliberately "shorter", not "now under the limit": a file that size is not
 fixed in one write.
 
 **`advisoryAsk`.** This is a backstop, not a question for the developer, so on
-a host with no interactive `ask` it is surfaced rather than blocking
+both hosts it is surfaced as advice rather than prompting or blocking
 (CONTRACTS §5 step 9, §7).
 
 **Frontend-only.** The `limits.fileLines` thresholds shipped in
@@ -700,7 +700,7 @@ directory, so it lives in that repository's globs.
 - not covered: the staging route (`git add -A` sweeping an edited migration
   in) — that is `protected-paths`' job, and is deliberately not duplicated
 
-### `doc-comment-style` · deny / ask
+### `doc-comment-style` · deny / ask (advisory)
 Enforces the house documentation style on newly written text: judges a doc
 block by the longest unbroken run of prose inside it — a blank line, a
 bullet, a numbered step and an `@`-tag each end a run rather than extending
@@ -738,6 +738,24 @@ exactly as this rule asks — a summary plus a `<param>` per parameter and a
 `ask` was a hard stop, that denied correct documentation on every properly
 documented method. A doc block now ends a run of plain `//` lines rather than
 extending it; a genuine run of `//` lines in a `.cs` file still asks.
+
+**`advisoryAsk`.** Every `ask` this rule returns — the long prose run, the run
+of `//` lines, a `.cs` member missing its `<param>` or `<returns>` — is a
+nudge, not a question only the developer can answer, so the call proceeds and
+the agent is handed the reason and the fix as `additionalContext` (Claude Code
+also prints a `systemMessage` for the developer) instead of a permission
+prompt (CONTRACTS §5 step 9, §7). Measured over fifteen days of one
+developer's guard-activity logs, this rule prompted 91 times inside workflow
+agents. A subagent cannot answer a permission prompt, and an ask's reason is
+shown only in the developer's dialog, never to the agent, so each prompt was
+a wait for the developer, with no way for the agent to act on what the rule
+had found. The `deny` rows — `@example`, a `/** … */` block in a `.cs` file, a
+ticket id — are untouched and stay the hard stop on every host. An `ask` this rule
+reaches only because the project switch or an override softened its `deny` is
+advised the same way. This rule's id sorts ahead of `infra-self-protection` and `protected-paths`, so the engine's
+tie rule matters here: at equal severity a genuine `ask` outranks an advisory
+one, so this nudge can never hide a question on the same call (CONTRACTS §5
+step 8).
 
 ### `comment-line-width` · ask (advisory) · `requiresConfig: ["docCommentStyle.maxLineWidth"]`
 A newly written comment line wider than the project's configured width. The
@@ -859,8 +877,9 @@ rule live everywhere by default rather than only where someone remembered to
 set `sourceRoots`.
 
 **`advisoryAsk`.** A backstop for a search the agent should have done
-itself, not a decision only the developer can take — so on Codex it is
-surfaced rather than blocking (CONTRACTS §5 step 9, §7).
+itself, not a decision only the developer can take — so on both hosts it is
+surfaced as advice rather than prompting (Claude Code) or blocking (Codex)
+(CONTRACTS §5 step 9, §7).
 
 The search is a bounded filename scan, never a full-text index: only files
 with a source extension are compared (`.cs .ts .tsx .js .jsx .mjs .cjs .vue
@@ -1073,6 +1092,93 @@ hook.
 Also denies deleting the state directory, and denies `chmod`/`icacls`-style
 permission changes against it.
 
+A statement that names the real `approvals.json` or `overrides.json` is denied
+unless it is read-only. An inline `node -e` or `python -c` script counts as
+read-only only when two things hold, and the second only ever adds to the
+first, so the test is strictly additive over the one this rule had before the
+per-language lists: nothing the old test denied can pass now.
+
+1. **The old test, kept exactly.** The old recogniser finds a script
+   (`node -e` / `--eval`, `python -c` or `python3 -c`, anywhere in the
+   statement; `-p`, `--print`, `-pe` and `-ep` are not recognised, so a
+   statement that uses them is not read-only), and the old write net
+   (`LEGACY_INLINE_WRITE_RE`) finds nothing in it. The net holds any `.write(`,
+   so a script that calls `process.stdout.write(`, or a Python one that calls
+   `sys.stdout.write(`, is no read-only script — output is not neutralised in
+   the deny half.
+2. **The new detections**, read on the statement as the command it actually
+   runs: a trailing unquoted shell comment is cut off and the value of every
+   leading `NAME=value` word is blanked (only the command substitutions in it,
+   which really run, are kept), so the words `node -e` in a comment or an
+   assigned string do not make a copy look like a read. A script is refused
+   when the word runs on past its closing quote (`fs.copyFi''leSync(…)`), and
+   when it was double-quoted and the shell expands something in it before the
+   interpreter sees it (`$(`, a backtick, `${NAME:-…}`, `${!NAME}`; a bare
+   `${NAME}` is a variable's value, a `$` or backtick after an odd number of
+   backslashes is escaped, and for the PowerShell tool the backtick is its own
+   escape character and is not tested) — a single-quoted script is literal
+   code, and a plain `$NAME` stays allowed. The one apostrophe splice a
+   single-quoted script can hold (`'a'"'"'b'`, the word `a'b`) is joined
+   before this reading; any other adjacent piece keeps refusing. A nested-shell wrapper
+   (`bash -c "node -e '…'"`) is judged by the scripts inside it, as the inner
+   shell reads them. Then the script's own language's list must find no file
+   change, no process start and no code loaded from outside the text. One list
+   per language, because Python's `.replace(` and `.rename(` would otherwise
+   catch ordinary JavaScript string code.
+
+Removal detection is the opposite: it recognises an interpreter anywhere in
+the statement as written, with both the old recogniser and the wider one that
+also takes `-p`, `--print`, `-pe` and `-ep`, because there recognising more is
+the safe direction.
+
+Node's list: the unambiguous long names (every `Sync` form of the `fs`
+writing names, `writeFile`, `appendFile`, `copyFile`, `writev`, any
+`*WriteStream`, `mkdtemp*`, `Utf8Stream`, `writeHeapSnapshot`, `writeReport`)
+anywhere in the script, strings and regular expressions included; an options
+key `flag`/`flags` whose value is a quoted mode that can write, and the `O_*`
+open constants; the short names (`rm`, `rename`, `mkdir`, `chmod` and the
+rest) only in an API position — a member call, `util.promisify(fs.rm)`, a
+destructuring or import list of an `fs`-specific name where a binding is
+written (after `const`/`let`/`var`, in an import list, as a parameter or as an
+assignment; nested, array-wrapped and quoted-key forms included), or a bracket
+string of an `fs`-specific name — so a shell verb inside a regular expression
+or a string, a bare call, a data field (`o.rules.mkdir`, `o.rules["write"]`),
+an object literal or a function body that holds a local named `cp` or `rm`,
+and a short name held in a string and used one step later (which the old test
+passed too) are not. A comment right after a member dot and a `with (` scope
+are read on the script with its string and template text blanked, so a label
+that holds them is not one. An `open`/`openSync` call is a write unless it
+passes at most one argument, `"r"`, `"rs"` or `O_RDONLY` as its second, or a
+callback function as its second (the form with no mode); and a `writeSync` to
+descriptor 1 or 2 is neutralised by the new detections, as the old test never
+counted it. Code loaded from outside the text counts (`eval`, `new Function`,
+`process.binding` and kin, a `require(` of anything but one plain module name
+or one `.json` literal, an `import(` of anything but one plain built-in name
+with an optional `node:` prefix and sub-path, `vm`, `child_process`,
+`worker_threads`, `cluster`, `inspector`, `module`, `repl`, `wasi` and
+`sqlite` by `require`, `import(` or `from`), and so do the built-in modules
+that are globals in `node -e` (`vm`, `cluster`, `inspector`, `repl`, `v8`,
+`wasi`, `trace_events`) — only as an object, a call or a spread, never as a
+bare word, so a loop variable, a string or a home folder named `dev-vm` is
+not one. Python's
+list covers `shutil`, `os`, pathlib-style methods, `.write(`, every process
+start, loaded code (`exec` and `eval` outside string literals, `importlib`,
+`runpy`, a wildcard import of `os`, `shutil`, `subprocess`, `pty`, `pathlib`
+or `io`, `__import__` unless it is given one literal module name that does not
+change files or load code, `getattr` on `os`, `shutil`, `pathlib` or `Path`
+unless it reads a literal harmless name), a module alias that is then used
+with a changing member, and the rarer writers (`fileinput` in place,
+`sqlite3`, `zipfile`, `tarfile`, `dbm` and `shelve` in an import or a member
+position only, `FileHandler`, `io.FileIO`, `GzipFile`, `urlretrieve`,
+`savetxt`, `basicConfig(filename=…)`, a pandas `.to_*(` that names a file, an
+assignment to `sys.stdout` or `sys.stderr` that is not a text wrapper over the
+stream's own buffer); every `open(` is read with balanced
+parentheses, so a nested `os.path.join(…)` does not hide the mode, and a mode
+that is not a literal counts as a write. `Path(…).rename(`/`.replace(` called
+directly are recognised; through an alias they are not. A call built at run
+time is disguised code and out of scope; the other open residuals are listed
+in `docs/internal/LIMITS.md`.
+
 The checks above are precise and statement-scoped — each shell statement is
 parsed and matched on its own. A raw-text conservative backstop covers the
 gap that scoping leaves open: a construct that puts the recognisable words in
@@ -1090,7 +1196,63 @@ words — accepted, since on this mandatory rule a false positive costs one
 prompt and a false negative defeats the rule the config layer can never
 soften.
 
-### `shell-file-write` · deny / ask
+The backstop has one exception, and it is a shape: a command that is, from
+first character to last, a single `node -e` / `--eval` / `-p` / `--print`
+invocation with its code in single quotes (`isSealedReadOnlyNodeCommand`). It
+applies on the `Bash` tool only — Windows PowerShell rewrites embedded quotes
+and treats typographic quotes as single quotes, and a Codex shell tool's shell
+differs by platform, so node could run other code than the guard read there.
+The anchor is one test over the raw text, not statement parsing: nothing may
+precede `node` (no `cd`, no env prefix), nothing may follow the closing
+quote (no pipe, redirect, `;`, `&&`, comment or second line), and only spaces
+and tabs separate `node`, the flag and the quote — a newline there is a
+command separator in a POSIX shell. The code must
+name no way to run other code or start a process — `require` only of `fs`,
+`path`, `os`, `util` or `readline`; `process` only for `argv`, `env`,
+`stdout`, `stderr`, `exit`, `exitCode`, `cwd`, `platform`; none of `eval`,
+`Function`, `import`, `globalThis`, `this`, `constructor`, `child_process` and
+the rest of the list, and no Unicode escape inside an identifier — and no call
+that changes a file, by the same node list the deny half uses (with
+`process.stdout.write(` and `process.stderr.write(` removed first: this is the
+one place the exception reads them as output). The exception then adds checks
+the deny half does not have, because here a miss silences the backstop
+outright, and these stay in force however the deny half is tuned to spare a
+read:
+
+- every other built-in module used as a bare global (`vm`, `cluster`, `v8`,
+  `zlib`, `url`, and the rest of the running Node's own list, minus `fs`,
+  `path`, `os`, `util`, `readline`, `console` and `process`), as a whole word
+  not preceded by a single dot, so a spread (`{...vm}`) is seen;
+- a short file-changing name in any position — a member of any short name,
+  called or not, a bare call, a destructuring of any short name, the generic
+  `open`, `write` and `link` included, and a string that is exactly one;
+- the words `flag` and `flags` anywhere;
+- `new` of anything but `Map`, `Set`, `WeakMap`, `WeakSet`, `Date`, `RegExp`,
+  `Array`, `Object`, `Error`, `URL` or `Intl.<name>`, a call on a computed
+  member or on a call result (`](`, `)(`), and a tagged template;
+- a bracket subscript opening with an escaped string, two string literals
+  joined with `+`, a template placeholder opening with a literal, and the
+  words that assemble a name or walk to a constructor (`fromCharCode`,
+  `getPrototypeOf`, `getOwnPropertyNames`, `defineProperty` and kin);
+- `fs` as anything but `fs.<member>`: every occurrence of the identifier is the
+  one binding `const fs = require("fs")` or directly followed by a member
+  access (`fs.promises` by another), and every `require("fs")` is that
+  binding's initialiser or directly followed by a member access, so no
+  destructuring, spread, enumeration or alias of `fs` is left to chase;
+- an HTML-like comment (`<!--` anywhere, `-->` at the start of a line), which
+  Node reads as a line comment that can sit between a dot and a name;
+- the call-shape tests above run also on two copies of the code with its
+  comments removed, so a comment between the tokens hides nothing; and the
+  words `fetch`, `WebSocket`, `EventSource`, `WebAssembly`, `setPriority`,
+  `localStorage` and `sessionStorage`.
+
+It exists because a log-analysis script holding `rm` inside a regular
+expression beside the state directory's path asked every time. It does not
+bring statement scoping back: the backstop is there for evasions that rebuild
+a verb out of separate statements, and a sealed script has no statement, no
+shell and no capability to do that with.
+
+### `shell-file-write` · deny / ask (advisory)
 Every file rule above this line — `doc-comment-style`, `no-explicit-any`,
 `naming-standards`, `barrel-exports-only`, `component-folder-shape`,
 `component-types-file`, `component-view-logic`, `api-import-boundary`, `file-size-limit`,
@@ -1169,6 +1331,26 @@ never flagged.
 Multiple targets in one command report the most severe decision, ties broken
 by command order — the same pattern `protected-paths` uses for a blanket
 stage sweeping in several protected paths at once.
+
+**`advisoryAsk`.** The one `ask` this rule returns — a mechanism detected,
+the path not provable — is a nudge, so the call proceeds and the agent is
+handed the reason and the fix as `additionalContext` (Claude Code also prints
+a `systemMessage` for the developer) instead of a permission prompt (CONTRACTS
+§5 step 9, §7). The note names the mechanism, says the concrete path could
+not be extracted, and tells the agent to confirm the exact target or use the
+write tool so the standards run. Measured over fifteen days of one developer's
+guard-activity logs, this was the rule that prompted most: 472 times inside
+workflow agents and 76 more in the main thread, at a median wait of about two
+minutes each. A subagent cannot answer a permission prompt, and an ask's
+reason is shown only in the developer's dialog, never to the agent, so the
+prompts stalled unattended runs without ever telling the agent what to fix.
+A target whose path can be read never reaches the nudge: the `deny` tier
+above is untouched and stays the hard stop. A genuine `ask` from another rule
+on the same call still wins over this nudge (CONTRACTS §5 step 8). An `ask`
+this rule reaches only because the project switch or an override softened its
+`deny` is advised the same way. The cost accepted: a shell command that
+writes a real source file through a path the analysis cannot read now
+proceeds with a note rather than waiting for the developer.
 
 `group: "agent"`, deliberately, not `"code"`: this repository turns the
 `code` group off for itself

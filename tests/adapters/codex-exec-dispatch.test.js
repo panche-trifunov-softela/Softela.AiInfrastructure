@@ -220,6 +220,62 @@ suite("adapters/codex-exec-dispatch", ({ test, eq, ok, tmpdir }) => {
     ok(reason.includes("src/a.ts"), "reason should name the file the nested command wrote to");
   });
 
+  /* ------------------------------------------------- advisory ask tie-break */
+
+  /**
+   * A test-only rule asking on a nested shell command containing a marker.
+   *
+   * @param {string} id The rule's own id.
+   * @param {string} marker The text a command must contain for the rule to fire.
+   * @param {boolean} advisory Whether the rule declares `advisoryAsk`.
+   * @returns {object} A minimal, valid rule module.
+   */
+  function askOnCommandMarker(id, marker, advisory) {
+    return {
+      id,
+      title: `test-only: ask on a command containing ${marker}`,
+      events: ["PreToolUse"],
+      tools: null,
+      defaultAction: "ask",
+      advisoryAsk: advisory,
+      group: "agent",
+      requiresConfig: [],
+      requiresModule: null,
+      evaluate: (ctx) => (String(ctx.command).includes(marker) ? { action: "ask", reason: `asked ${marker}` } : null),
+    };
+  }
+
+  test("exec operations: an advisory ask on an earlier nested call does not hide a genuine ask on a later one", () => {
+    const cwd = tmpdir();
+    const source = [
+      'await tools.shell_command({command: "echo first-marker"});',
+      'await tools.shell_command({command: "echo second-marker"});',
+    ].join("\n");
+    const ctx = buildContext(execPayload(source, cwd), { agent: "codex" });
+
+    const result = evaluateExecCall(ctx, source, {
+      rules: [askOnCommandMarker("nudge-first", "first-marker", true), askOnCommandMarker("ask-second", "second-marker", false)],
+    });
+    ok(result.decision, "expected a decision");
+    eq(result.decision.ruleId, "ask-second");
+    eq(result.decision.advisory, undefined);
+  });
+
+  test("exec operations: a genuine ask on an earlier nested call is kept over a later advisory ask", () => {
+    const cwd = tmpdir();
+    const source = [
+      'await tools.shell_command({command: "echo first-marker"});',
+      'await tools.shell_command({command: "echo second-marker"});',
+    ].join("\n");
+    const ctx = buildContext(execPayload(source, cwd), { agent: "codex" });
+
+    const result = evaluateExecCall(ctx, source, {
+      rules: [askOnCommandMarker("ask-first", "first-marker", false), askOnCommandMarker("nudge-second", "second-marker", true)],
+    });
+    eq(result.decision.ruleId, "ask-first");
+    eq(result.decision.advisory, undefined);
+  });
+
   /* -------------------------------------------------------- uninspectable */
 
   test("an exec call whose mutating shell payload cannot be extracted produces an advisory, not a block", () => {

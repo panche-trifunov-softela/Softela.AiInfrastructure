@@ -196,8 +196,9 @@ module.exports = {
   group: "code",
 
   /**
-   * A comment-width nudge, never a request for the developer's decision — a
-   * host with no interactive ask surfaces it instead of blocking.
+   * A comment-width nudge, never a request for the developer's decision —
+   * it is surfaced as advice on both hosts (no prompt on Claude Code, no
+   * block on Codex).
    */
   advisoryAsk: true,
 

@@ -401,8 +401,8 @@ module.exports = {
   /**
    * A backstop for a search the agent was supposed to do itself, not a
    * decision only the developer can take: the rulebook says so in as many
-   * words. On a host with no interactive ask it is surfaced rather than
-   * blocking; see `core/engine.js`'s step 10.
+   * words. It is surfaced as advice on both hosts (no prompt on Claude
+   * Code, no block on Codex); see `core/engine.js`'s step 10.
    */
   advisoryAsk: true,
 

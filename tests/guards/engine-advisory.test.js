@@ -107,4 +107,58 @@ suite("guards/engine-advisory", ({ test, eq }) => {
     eq(result.action, "deny");
     eq(result.advisory, undefined);
   });
+
+  /* ------------------------------------------------------------ tie-break */
+
+  const nudgeRule = (id) =>
+    fakeRule({ id, advisoryAsk: true, evaluate: () => ({ action: "ask", reason: `nudge from ${id}`, fix: "do x" }) });
+  const questionRule = (id, extra = {}) =>
+    fakeRule({ id, evaluate: () => ({ action: "ask", reason: `question from ${id}` }), ...extra });
+  const denyRule = (id) =>
+    fakeRule({ id, defaultAction: "deny", evaluate: () => ({ action: "deny", reason: `block from ${id}` }) });
+
+  test("tie-break: an earlier advisory ask does not hide a later genuine ask", () => {
+    const result = evaluate(fakeCtx(), { rules: [nudgeRule("a-nudge"), questionRule("z-question")] });
+    eq(result.ruleId, "z-question");
+    eq(result.action, "ask");
+    eq(result.advisory, undefined);
+    eq("fix" in result, false, "the displaced nudge's fix must not leak onto the genuine ask");
+  });
+
+  test("tie-break: a later advisory ask does not displace an earlier genuine ask", () => {
+    const result = evaluate(fakeCtx(), { rules: [questionRule("a-question"), nudgeRule("z-nudge")] });
+    eq(result.ruleId, "a-question");
+    eq(result.advisory, undefined);
+  });
+
+  test("tie-break: two genuine asks keep the first", () => {
+    const result = evaluate(fakeCtx(), { rules: [questionRule("a-question"), questionRule("z-question")] });
+    eq(result.ruleId, "a-question");
+    eq(result.advisory, undefined);
+  });
+
+  test("tie-break: two advisory asks keep the first, still advisory", () => {
+    const result = evaluate(fakeCtx(), { rules: [nudgeRule("a-nudge"), nudgeRule("z-nudge")] });
+    eq(result.ruleId, "a-nudge");
+    eq(result.advisory, true);
+  });
+
+  test("tie-break: a deny beats an advisory ask in either registry order", () => {
+    const forward = evaluate(fakeCtx(), { rules: [nudgeRule("a-nudge"), denyRule("z-deny")] });
+    eq(forward.ruleId, "z-deny");
+    eq(forward.action, "deny");
+    eq(forward.advisory, undefined);
+
+    const backward = evaluate(fakeCtx(), { rules: [denyRule("a-deny"), nudgeRule("z-nudge")] });
+    eq(backward.ruleId, "a-deny");
+    eq(backward.action, "deny");
+  });
+
+  test("tie-break: a mandatory genuine ask after an advisory ask wins", () => {
+    const result = evaluate(fakeCtx(), {
+      rules: [nudgeRule("a-nudge"), questionRule("z-mandatory", { mandatory: true })],
+    });
+    eq(result.ruleId, "z-mandatory");
+    eq(result.advisory, undefined);
+  });
 });

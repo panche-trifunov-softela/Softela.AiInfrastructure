@@ -290,18 +290,18 @@ Before requesting review:
 
 `core/guards/doc-comment-style.js` (and the equivalent Codex hook) denies
 `@example`, a JSDoc-style `/** ... */` block in a `.cs` file, and a ticket or
-work-item id anywhere in newly written content, outright. It asks for
-confirmation on a prose-only doc block over roughly 18 lines, more than 6
-consecutive `//` lines, or a `.cs` member that takes parameters or returns a
-value whose XML doc block is missing `<param>` or `<returns>`. The length
-checks are a deliberate backstop, not a substitute for judgement — a guard
-cannot tell a genuine long explanation from an unlabelled enumeration by
-line count alone, so the list-vs-prose call always stays with whoever is
+work-item id anywhere in newly written content, outright. It advises,
+without blocking the call, on a prose-only doc block over roughly 18 lines,
+more than 6 consecutive `//` lines, or a `.cs` member that takes parameters or
+returns a value whose XML doc block is missing `<param>` or `<returns>`. The
+length checks are a deliberate backstop, not a substitute for judgement — a
+guard cannot tell a genuine long explanation from an unlabelled enumeration
+by line count alone, so the list-vs-prose call always stays with whoever is
 writing or reviewing the code.
 
-Two further checks advise without blocking the call. One fires when a comment
-line exceeds the project's configured code width, and is silent until a
-project declares that width. The other fires on a documented member with no
+Two further checks advise in the same way. One fires when a comment line
+exceeds the project's configured code width, and is silent until a project
+declares that width. The other fires on a documented member with no
 blank line separating it from the member before it — the gap this document
 requires between one comment-member pair and the next.
 

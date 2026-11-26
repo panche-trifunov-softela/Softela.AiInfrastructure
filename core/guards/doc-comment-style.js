@@ -255,7 +255,7 @@ function firstOversizedProseBlock(lines, maxBlockLines) {
  * this check exists to push people towards, so counting it turned the rule
  * against the very style it asks for: a C# member documented with a summary
  * and four tags clears any sane threshold on its own and was denied on
- * Codex, where an `ask` is a hard stop. {@link XML_DOC_LINE} is checked
+ * Codex, where a genuine `ask` is a hard stop. {@link XML_DOC_LINE} is checked
  * first, and ends the run rather than extending it: a doc block genuinely
  * terminates whatever stretch of ordinary `//` comments preceded it.
  *
@@ -386,6 +386,15 @@ module.exports = {
 
   /** the strongest action this rule may ever return */
   defaultAction: "deny",
+
+  /**
+   * Every `ask` here is a style nudge — a long comment run, an unstructured
+   * prose block, a missing XML tag — that the agent can act on from the reason
+   * and fix alone, not a decision for the developer to take. Surfaced as
+   * advice on both hosts; the denies (ticket id, `@example`, JSDoc in C#) are
+   * unaffected and stay the hard stop. See `core/engine.js`'s step 10.
+   */
+  advisoryAsk: true,
 
   /** which catalogue group this rule belongs to */
   group: "code",

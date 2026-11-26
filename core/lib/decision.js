@@ -78,4 +78,29 @@ function clamp(action, maxAction) {
   return severity(action) <= severity(maxAction) ? action : maxAction;
 }
 
-module.exports = { SEVERITY, deny, ask, pass, severity, clamp };
+/**
+ * Decides whether a candidate decision displaces the one already kept.
+ *
+ * The more severe action wins. At equal severity the incumbent stays — the
+ * earlier rule in registry order, or the earlier operation in extraction
+ * order — with one exception: a genuine `ask` (a question for the developer)
+ * displaces an advisory `ask` (a nudge), so a nudge registered earlier can
+ * never hide a prompt that has to be answered.
+ *
+ * @param {{action: string, advisory?: boolean}} candidate The decision under
+ * consideration.
+ * @param {{action: string, advisory?: boolean} | null | undefined} incumbent
+ * The decision kept so far, if any.
+ * @returns {boolean} `true` when the candidate should replace the incumbent.
+ */
+function outranks(candidate, incumbent) {
+  if (!incumbent) return true;
+
+  const candidateSeverity = severity(candidate.action);
+  const incumbentSeverity = severity(incumbent.action);
+  if (candidateSeverity !== incumbentSeverity) return candidateSeverity > incumbentSeverity;
+
+  return candidate.action === "ask" && candidate.advisory !== true && incumbent.advisory === true;
+}
+
+module.exports = { SEVERITY, deny, ask, pass, severity, clamp, outranks };

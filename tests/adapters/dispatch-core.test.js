@@ -177,6 +177,18 @@ function askOnPathSuffix(id, suffix) {
   };
 }
 
+/**
+ * The nudge counterpart to {@link askOnPathSuffix}: the same `ask`, but from a
+ * rule declaring `advisoryAsk`, so the engine marks its decision `advisory`.
+ *
+ * @param {string} id The rule's own id.
+ * @param {string} suffix The path suffix this rule fires on.
+ * @returns {object} A minimal, valid rule module.
+ */
+function advisoryAskOnPathSuffix(id, suffix) {
+  return { ...askOnPathSuffix(id, suffix), advisoryAsk: true };
+}
+
 suite("adapters/dispatch-core write decode", ({ test, eq, ok }) => {
   /* -------------------------------------------------------- buildWriteContext */
 
@@ -326,6 +338,42 @@ suite("adapters/dispatch-core write decode", ({ test, eq, ok }) => {
     eq(result.handled, true);
     eq(result.decision.action, "deny");
     eq(result.decision.reason, `denied ${path.resolve(ctx.git.repoRoot, "src/x.ts")}`);
+  });
+
+  test("several decoded writes: an advisory ask on the first file does not hide a genuine ask on a later one", () => {
+    const patch = [
+      "*** Begin Patch",
+      "*** Add File: src/one.ts",
+      "+export const one = 1;",
+      "*** Add File: src/two.ts",
+      "+export const two = 2;",
+      "*** End Patch",
+    ].join("\n");
+    const ctx = makeCtx({ toolName: "apply_patch", input: { patch } });
+    const result = evaluateDecodedWrites(ctx, {
+      rules: [advisoryAskOnPathSuffix("nudge-one", "one.ts"), askOnPathSuffix("ask-two", "two.ts")],
+    });
+    eq(result.handled, true);
+    eq(result.decision.action, "ask");
+    eq(result.decision.ruleId, "ask-two");
+    eq(result.decision.advisory, undefined);
+  });
+
+  test("several decoded writes: a genuine ask on the first file is not displaced by an advisory ask on a later one", () => {
+    const patch = [
+      "*** Begin Patch",
+      "*** Add File: src/one.ts",
+      "+export const one = 1;",
+      "*** Add File: src/two.ts",
+      "+export const two = 2;",
+      "*** End Patch",
+    ].join("\n");
+    const ctx = makeCtx({ toolName: "apply_patch", input: { patch } });
+    const result = evaluateDecodedWrites(ctx, {
+      rules: [askOnPathSuffix("ask-one", "one.ts"), advisoryAskOnPathSuffix("nudge-two", "two.ts")],
+    });
+    eq(result.decision.ruleId, "ask-one");
+    eq(result.decision.advisory, undefined);
   });
 
   test("a MultiEdit call's content is visible to a content rule, not only its path", () => {
