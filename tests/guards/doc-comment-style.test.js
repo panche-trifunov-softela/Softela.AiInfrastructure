@@ -1,7 +1,7 @@
 "use strict";
 
 const { suite } = require("../harness");
-const { decide, PROJECT_MINIMAL, PROJECT_BACKEND } = require("./_ctx");
+const { decide, decision, PROJECT_MINIMAL, PROJECT_BACKEND } = require("./_ctx");
 const rule = require("../../core/guards/doc-comment-style");
 
 /**
@@ -48,7 +48,7 @@ function twoProseParagraphs(n) {
   return "/**\n" + " *x\n".repeat(n) + " *\n" + " *x\n".repeat(n) + " */";
 }
 
-suite("guards/doc-comment-style", ({ test, eq }) => {
+suite("guards/doc-comment-style", ({ test, eq, ok }) => {
   /* -------------------------------------------------------- positive: deny */
 
   test("denies @example in a .ts doc block", () => {
@@ -411,6 +411,26 @@ suite("guards/doc-comment-style", ({ test, eq }) => {
 
   test("passes an ordinary two-line inline comment", () => {
     eq(decide(rule, { toolName: "Edit", filePath: "a.ts", content: "// Cache the result: recomputing it is expensive on every render.\nconst x = 1;" }), "pass");
+  });
+
+  /* ------------------------------------------------------------- advisory */
+
+  test("declares advisoryAsk: its asks are style nudges, not questions", () => {
+    eq(rule.advisoryAsk, true);
+  });
+
+  test("an ask case comes out of the engine as an advisory ask carrying its fix", () => {
+    const d = decision(rule, { toolName: "Write", filePath: "a.ts", content: proseBlock(20) });
+    eq(d.action, "ask");
+    eq(d.advisory, true);
+    eq(d.ruleId, "doc-comment-style");
+    ok(typeof d.fix === "string" && d.fix.length > 0, "the nudge must carry its fix");
+  });
+
+  test("a deny case is never marked advisory", () => {
+    const d = decision(rule, { toolName: "Write", filePath: "a.ts", content: "/**\n * @example\n */" });
+    eq(d.action, "deny");
+    eq(d.advisory, undefined);
   });
 
   /* ------------------------------------------------------------ overrides */

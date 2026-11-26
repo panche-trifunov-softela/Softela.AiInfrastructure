@@ -502,6 +502,26 @@ suite("guards/shell-file-write", ({ test, eq, ok }) => {
     );
   });
 
+  /* ------------------------------------------------------------------ advisory */
+
+  test("declares advisoryAsk: its one ask is a nudge, not a question", () => {
+    eq(rule.advisoryAsk, true);
+  });
+
+  test("an uncertain target comes out of the engine as an advisory ask", () => {
+    const d = decision(rule, { command: 'cmd > "$OUT"' });
+    eq(d.action, "ask");
+    eq(d.advisory, true);
+    eq(d.ruleId, "shell-file-write");
+    ok(typeof d.fix === "string" && d.fix.length > 0, "the nudge must carry its fix");
+  });
+
+  test("a certain target on a governed extension stays a deny, never marked advisory", () => {
+    const d = decision(rule, { command: "echo x > src/components/Widget/index.ts" });
+    eq(d.action, "deny");
+    eq(d.advisory, undefined);
+  });
+
   /* ------------------------------------------------------------------ overrides */
 
   test("clamps to ask under a developer override", () => {

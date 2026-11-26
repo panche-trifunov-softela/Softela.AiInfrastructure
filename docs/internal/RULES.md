@@ -259,7 +259,7 @@ Deliberately "shorter", not "now under the limit": a file that size is not
 fixed in one write.
 
 **`advisoryAsk`.** This is a backstop, not a question for the developer, so on
-a host with no interactive `ask` it is surfaced rather than blocking
+both hosts it is surfaced as advice rather than prompting or blocking
 (CONTRACTS §5 step 9, §7).
 
 **Frontend-only.** The `limits.fileLines` thresholds shipped in
@@ -700,7 +700,7 @@ directory, so it lives in that repository's globs.
 - not covered: the staging route (`git add -A` sweeping an edited migration
   in) — that is `protected-paths`' job, and is deliberately not duplicated
 
-### `doc-comment-style` · deny / ask
+### `doc-comment-style` · deny / ask (advisory)
 Enforces the house documentation style on newly written text: judges a doc
 block by the longest unbroken run of prose inside it — a blank line, a
 bullet, a numbered step and an `@`-tag each end a run rather than extending
@@ -738,6 +738,24 @@ exactly as this rule asks — a summary plus a `<param>` per parameter and a
 `ask` was a hard stop, that denied correct documentation on every properly
 documented method. A doc block now ends a run of plain `//` lines rather than
 extending it; a genuine run of `//` lines in a `.cs` file still asks.
+
+**`advisoryAsk`.** Every `ask` this rule returns — the long prose run, the run
+of `//` lines, a `.cs` member missing its `<param>` or `<returns>` — is a
+nudge, not a question only the developer can answer, so the call proceeds and
+the agent is handed the reason and the fix as `additionalContext` (Claude Code
+also prints a `systemMessage` for the developer) instead of a permission
+prompt (CONTRACTS §5 step 9, §7). Measured over fifteen days of one
+developer's guard-activity logs, this rule prompted 91 times inside workflow
+agents. A subagent cannot answer a permission prompt, and an ask's reason is
+shown only in the developer's dialog, never to the agent, so each prompt was
+a wait for the developer, with no way for the agent to act on what the rule
+had found. The `deny` rows — `@example`, a `/** … */` block in a `.cs` file, a
+ticket id — are untouched and stay the hard stop on every host. An `ask` this rule
+reaches only because the project switch or an override softened its `deny` is
+advised the same way. This rule's id sorts ahead of `infra-self-protection` and `protected-paths`, so the engine's
+tie rule matters here: at equal severity a genuine `ask` outranks an advisory
+one, so this nudge can never hide a question on the same call (CONTRACTS §5
+step 8).
 
 ### `comment-line-width` · ask (advisory) · `requiresConfig: ["docCommentStyle.maxLineWidth"]`
 A newly written comment line wider than the project's configured width. The
@@ -859,8 +877,9 @@ rule live everywhere by default rather than only where someone remembered to
 set `sourceRoots`.
 
 **`advisoryAsk`.** A backstop for a search the agent should have done
-itself, not a decision only the developer can take — so on Codex it is
-surfaced rather than blocking (CONTRACTS §5 step 9, §7).
+itself, not a decision only the developer can take — so on both hosts it is
+surfaced as advice rather than prompting (Claude Code) or blocking (Codex)
+(CONTRACTS §5 step 9, §7).
 
 The search is a bounded filename scan, never a full-text index: only files
 with a source extension are compared (`.cs .ts .tsx .js .jsx .mjs .cjs .vue
@@ -1090,7 +1109,7 @@ words — accepted, since on this mandatory rule a false positive costs one
 prompt and a false negative defeats the rule the config layer can never
 soften.
 
-### `shell-file-write` · deny / ask
+### `shell-file-write` · deny / ask (advisory)
 Every file rule above this line — `doc-comment-style`, `no-explicit-any`,
 `naming-standards`, `barrel-exports-only`, `component-folder-shape`,
 `component-types-file`, `component-view-logic`, `api-import-boundary`, `file-size-limit`,
@@ -1169,6 +1188,26 @@ never flagged.
 Multiple targets in one command report the most severe decision, ties broken
 by command order — the same pattern `protected-paths` uses for a blanket
 stage sweeping in several protected paths at once.
+
+**`advisoryAsk`.** The one `ask` this rule returns — a mechanism detected,
+the path not provable — is a nudge, so the call proceeds and the agent is
+handed the reason and the fix as `additionalContext` (Claude Code also prints
+a `systemMessage` for the developer) instead of a permission prompt (CONTRACTS
+§5 step 9, §7). The note names the mechanism, says the concrete path could
+not be extracted, and tells the agent to confirm the exact target or use the
+write tool so the standards run. Measured over fifteen days of one developer's
+guard-activity logs, this was the rule that prompted most: 472 times inside
+workflow agents and 76 more in the main thread, at a median wait of about two
+minutes each. A subagent cannot answer a permission prompt, and an ask's
+reason is shown only in the developer's dialog, never to the agent, so the
+prompts stalled unattended runs without ever telling the agent what to fix.
+A target whose path can be read never reaches the nudge: the `deny` tier
+above is untouched and stays the hard stop. A genuine `ask` from another rule
+on the same call still wins over this nudge (CONTRACTS §5 step 8). An `ask`
+this rule reaches only because the project switch or an override softened its
+`deny` is advised the same way. The cost accepted: a shell command that
+writes a real source file through a path the analysis cannot read now
+proceeds with a note rather than waiting for the developer.
 
 `group: "agent"`, deliberately, not `"code"`: this repository turns the
 `code` group off for itself

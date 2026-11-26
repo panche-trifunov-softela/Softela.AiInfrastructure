@@ -167,8 +167,9 @@ module.exports = {
 
   /**
    * A size nudge, never a request for the developer's decision — the title
-   * of this rule says as much. On a host with no interactive ask it is
-   * surfaced rather than blocking; see `core/engine.js`'s step 10.
+   * of this rule says as much. It is surfaced as advice on both hosts (no
+   * prompt on Claude Code, no block on Codex); see `core/engine.js`'s
+   * step 10.
    */
   advisoryAsk: true,
 

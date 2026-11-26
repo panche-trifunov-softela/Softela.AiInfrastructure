@@ -10,7 +10,7 @@
  * order.
  */
 
-const { clamp, severity } = require("./lib/decision");
+const { clamp, outranks, severity } = require("./lib/decision");
 const approvals = require("./lib/approvals");
 const { resolveStack } = require("./lib/stack-resolver");
 const { loadPreset } = require("./lib/preset-resolver");
@@ -316,8 +316,10 @@ function applicableRules(ctx, options = {}) {
  * 8. Unless the rule is `mandatory`, drop a result whose `allow` override
  *    matches `ctx.command` or `ctx.filePath`, then clamp its action to at
  *    most as severe as its override action.
- * 9. Keep the most severe surviving result; ties are broken by registry
- *    order, so the earliest-registered rule wins.
+ * 9. Keep the most severe surviving result. Ties are broken by registry
+ *    order, so the earliest-registered rule wins — except that a genuine
+ *    `ask` displaces an advisory one (step 10's mark, decided per candidate
+ *    before this comparison), so a nudge never hides a prompt.
  * 10. Mark the kept result `advisory: true` when it is an `ask` that is a
  *    NUDGE rather than a request for the developer's decision — the rule
  *    declares `advisoryAsk`, the rule's own `evaluate` result carries
@@ -425,8 +427,9 @@ function evaluate(ctx, options = {}) {
       action = clamp(action, "ask");
       reason = `${NEW_CODE_ONLY_ADVICE_PREFIX}\n\n${reason}`;
       // The step above has just reframed this decision as advice in so many
-      // words. Recording that on the decision itself is what lets a host
-      // with no interactive ask act on it — see `best.advisory` below.
+      // words. Recording that on the decision itself is what lets both
+      // hosts advise it instead of prompting or blocking, and what the tie
+      // rule reads — see `candidate.advisory` below.
       advisory = true;
     }
 
@@ -442,14 +445,14 @@ function evaluate(ctx, options = {}) {
     if (override && override.action !== undefined) action = clamp(action, override.action);
     if (severity(action) === 0) continue;
 
-    if (!best || severity(action) > severity(best.action)) {
-      best = { action, reason, ruleId: rule.id };
-      if (result.fix !== undefined) best.fix = result.fix;
-      // Only ever meaningful on an `ask`: a `deny` blocks on every host, and
-      // an override that raised a nudge to a denial is a deliberate
-      // strengthening this flag must not quietly undo.
-      if (advisory && action === "ask") best.advisory = true;
-    }
+    const candidate = { action, reason, ruleId: rule.id };
+    if (result.fix !== undefined) candidate.fix = result.fix;
+    // Only ever meaningful on an `ask`: a `deny` blocks on every host, and
+    // an override that raised a nudge to a denial is a deliberate
+    // strengthening this flag must not quietly undo.
+    if (advisory && action === "ask") candidate.advisory = true;
+
+    if (outranks(candidate, best)) best = candidate;
   }
 
   return best;

@@ -114,11 +114,17 @@ module.exports = {
 
   /**
    * true for a rule whose `ask` is a NUDGE rather than a request for the
-   * developer's decision — a size backstop, a reuse reminder. The engine
-   * (§5, step 9) marks such a decision `advisory: true`, and a host with no
-   * interactive `ask` surfaces it instead of blocking. Omitted (the
-   * default) means an `ask` from this rule genuinely wants the developer to
-   * look before the call proceeds, and still blocks on Codex.
+   * developer's decision — a size backstop, a reuse reminder, a shell write
+   * whose target could not be read. The engine (§5, step 9) marks such a
+   * decision `advisory: true`, and both hosts surface it as advice instead
+   * of prompting (Claude Code) or blocking (Codex): the call proceeds and the
+   * agent is handed the reason and fix as `additionalContext` (§7). It
+   * governs every `ask` the rule returns, including one reached only because
+   * the project switch or an override softened its `deny`; the `deny` itself
+   * is unaffected, and a nudge never hides a genuine `ask` on the same call
+   * (§5, step 8). Omitted (the default) means an `ask` from this rule
+   * genuinely wants the developer to look before the call proceeds: it
+   * prompts on Claude Code and blocks on Codex.
    */
   advisoryAsk: false,
 
@@ -280,26 +286,34 @@ evaluate(ctx, options) → null | { action, reason, fix, ruleId }
    `min(severity(action), severity(overrideAction))` — the developer may only
    soften, never escalate.
 8. **Most severe wins** among whatever survives; ties are broken by registry
-   order, which is the order in `index.js`. The single returned decision
-   carries `ruleId` so the developer can see which rule spoke, and so an
-   override can be written without guessing.
-9. Mark the surviving decision `advisory: true` when it is an `ask` that is
-   advice rather than a question: the rule declares `advisoryAsk` (§3), the
-   rule's own `evaluate` result carries `advisory: true`, or step 6 has just
+   order, which is the order in `index.js`, with one exception: at equal
+   severity a genuine `ask` displaces an advisory one. The comparison reads
+   step 9's mark, which is therefore decided per candidate before it
+   (`outranks`, `core/lib/decision.js`). A nudge must never hide a question
+   the developer has to answer on the same call, whichever rule sorts first;
+   two genuine asks, or two advisory ones, keep the earlier rule, and a
+   `deny` outranks any `ask`. The single returned decision carries `ruleId`
+   so the developer can see which rule spoke, and so an override can be
+   written without guessing.
+9. Mark each candidate `advisory: true` when it is an `ask` that is advice
+   rather than a question: the rule declares `advisoryAsk` (§3), the rule's
+   own `evaluate` result carries `advisory: true`, or step 6 has just
    reframed its reason as advice. Only ever set on an `ask`
    — a `deny` blocks on every host, and an override that deliberately
-   escalated a nudge into a denial must not have that undone. A host with a
-   native `ask` ignores the field entirely; Codex, which has none, uses it
-   to decide between surfacing and blocking (§7).
+   escalated a nudge into a denial must not have that undone. The decision
+   step 8 keeps carries the mark it was given, and both hosts use it to
+   surface the decision as advice instead of prompting or blocking (§7).
 
 **Evaluation order, stated once for the whole chain**: the rule produces an
 action → the engine clamps it to the rule's own `defaultAction` → the project
 config sets or clears it, in either direction → a `newCodeOnly` rule on a file
 proved to already exist is capped at `"ask"` → the developer override may only
-soften it further → whatever survives is marked advisory when it is a nudge. A `mandatory` rule still passes through the `defaultAction`
-clamp (step 4) — that is the rule's own honesty, not a policy tier — but stops
-there: its own (clamped) result stands, immune to the project switch, the
-`newCodeOnly` softening, and the override alike.
+soften it further → each surviving result is marked advisory when it is a
+nudge → the most severe is kept, and at equal severity a genuine `ask`
+displaces an advisory one. A `mandatory` rule still passes through the
+`defaultAction` clamp (step 4) — that is the rule's own honesty, not a policy
+tier — but stops there: its own (clamped) result stands, immune to the
+project switch, the `newCodeOnly` softening, and the override alike.
 
 **A known limitation, accepted deliberately**: because the `newCodeOnly`
 softening (step 6) runs *after* the project-config switch (step 5), a project
@@ -653,7 +667,7 @@ adapter, never in a rule. A rule returns `ask`; what that becomes is the
 adapter's problem.
 
 - **Claude Code** — `permissionDecision: "ask"`. The developer sees the reason
-  and decides.
+  and decides. A nudge is the exception; see below.
 - **Codex, `askMode: "block"` (default)** — emitted as a denial whose reason
   states the rule, states that it needs the developer's approval, and names the
   exact approval command. Chosen as the default because an advisory note is
@@ -672,7 +686,9 @@ blocking above — "an advisory note is bypassable, and a rule must not be
 bypassable without the developer's approval" — applies to a rule that wants
 the developer's *decision*. It does not apply to a rule that is telling the
 agent something: a size backstop, a reuse reminder, a structural expectation
-the engine has already softened to advice because the file predates it.
+the engine has already softened to advice because the file predates it, a
+comment-style note (`doc-comment-style`), a shell write whose target could not
+be read (`shell-file-write`).
 
 Treating those two the same is expensive on both hosts, in different
 currencies. Codex rendered both as a denial clearable only by typing an
@@ -690,9 +706,32 @@ none of which the agent that triggered them could have cleared. The severity
 was never the problem; the *cost of the same severity, multiplied by how
 often it fires* was.
 
-What still blocks on Codex is unchanged: every `deny`, and every `ask` a rule
-means as a question — a protected path, a destructive git command, a
-generated document, a subagent tier the developer has to sanction.
+The last two rules in that list moved over on the same argument, by
+measurement rather than by anticipation. Over fifteen days of one developer's
+guard-activity logs, nearly every ask that prompted inside workflow agents came
+from `shell-file-write` (472) or `doc-comment-style` (91), and
+`shell-file-write` prompted 76 more times in the main thread, at a median wait
+of about two minutes per prompt. A subagent cannot answer a permission prompt,
+and an ask's reason is shown only in the developer's dialog, never to the
+agent, so each prompt stalled the run without telling the agent what to fix.
+Both rules declare `advisoryAsk` (§3), so this holds in every context —
+workflow agent, subagent and main thread alike. The `deny` each of them
+carries is untouched.
+
+Marking a rule advisory is only safe because a nudge cannot hide a question:
+at equal severity a genuine `ask` displaces an advisory one (§5, step 8), and
+the two selectors in `adapters/shared/dispatch-core.js` that choose among
+several decisions — the files of one multi-file write and the operations of
+one Codex `exec` call — apply the same comparison (`outranks`,
+`core/lib/decision.js`). Without it, a nudge from a rule that sorts earlier —
+`doc-comment-style` ahead of `infra-self-protection` or `protected-paths`, as
+`code-block-spacing` and `delegate-bulk-reading` already were — would be the
+decision the adapter saw, and the question would go unasked.
+
+What still blocks on Codex, and still prompts on Claude Code, is unchanged:
+every `deny`, and every `ask` a rule means as a question — a protected path, a
+destructive git command, a generated document, a subagent tier the developer
+has to sanction.
 
 ---
 

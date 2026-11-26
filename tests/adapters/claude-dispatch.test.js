@@ -219,6 +219,74 @@ suite("adapters/claude-dispatch", ({ test, eq, ok, tmpdir }) => {
     ok(out.permissionDecisionReason.includes("subagent-model"), "reason should name the rule");
   });
 
+  /**
+   * Asserts a payload came back as a nudge: advice for the agent and a
+   * system message for the developer, never a permission prompt.
+   *
+   * @param {{code: number, parsed: object | null}} result The dispatcher run.
+   * @returns {void}
+   */
+  function expectShellWriteNudge(result) {
+    eq(result.code, 0);
+    ok(result.parsed !== null, "expected an advisory on stdout");
+    const out = result.parsed.hookSpecificOutput;
+    eq(out.permissionDecision, undefined, "an advisory must not carry a permissionDecision");
+    ok(typeof out.additionalContext === "string" && out.additionalContext.includes("shell-file-write"), "advisory should name the rule");
+    ok(out.additionalContext.includes("Fix:"), "advisory should carry the fix");
+    eq(result.parsed.systemMessage, out.additionalContext, "the developer-visible half must match the agent-visible one");
+  }
+
+  test("an uncertain-target shell write from the main thread is a nudge, not a prompt", () => {
+    const home = tmpdir();
+    const cwd = tmpdir();
+    const result = runDispatcher(CLAUDE_DISPATCH, shellPayload('cmd > "$OUT"', cwd), { home, cwd });
+    expectShellWriteNudge(result);
+  });
+
+  test("an uncertain-target shell write from inside a workflow agent is a nudge, not a prompt", () => {
+    const home = tmpdir();
+    const cwd = tmpdir();
+    const payload = {
+      ...shellPayload('cmd > "$OUT"', cwd),
+      agent_id: "agent-1",
+      agent_type: "workflow-subagent",
+    };
+    const result = runDispatcher(CLAUDE_DISPATCH, payload, { home, cwd });
+    expectShellWriteNudge(result);
+  });
+
+  test("a certain-target shell write to a governed source file is still denied", () => {
+    const home = tmpdir();
+    const cwd = tmpdir();
+    const payload = {
+      ...shellPayload("echo x > src/components/Widget/index.ts", cwd),
+      agent_id: "agent-1",
+      agent_type: "workflow-subagent",
+    };
+    const result = runDispatcher(CLAUDE_DISPATCH, payload, { home, cwd });
+    eq(result.code, 0);
+    ok(result.parsed !== null, "expected a decision on stdout");
+    eq(result.parsed.hookSpecificOutput.permissionDecision, "deny");
+    ok(result.parsed.hookSpecificOutput.permissionDecisionReason.includes("shell-file-write"), "reason should name the rule");
+  });
+
+  test("a doc-comment-style ask on a written file is a nudge, not a prompt", () => {
+    const home = tmpdir();
+    const cwd = tmpdir();
+    const payload = {
+      hook_event_name: "PreToolUse",
+      tool_name: "Write",
+      tool_input: { file_path: path.join(cwd, "src", "a.ts"), content: "/**\n" + " *x\n".repeat(20) + " */" },
+      cwd,
+    };
+    const result = runDispatcher(CLAUDE_DISPATCH, payload, { home, cwd });
+    eq(result.code, 0);
+    ok(result.parsed !== null, "expected an advisory on stdout");
+    const out = result.parsed.hookSpecificOutput;
+    eq(out.permissionDecision, undefined, "an advisory must not carry a permissionDecision");
+    ok(out.additionalContext.includes("doc-comment-style"), "advisory should name the rule");
+  });
+
   test("a deny is unaffected by the advisory channel, including under SOFTELA_AI_EXIT2", () => {
     const home = tmpdir();
     const cwd = tmpdir();
