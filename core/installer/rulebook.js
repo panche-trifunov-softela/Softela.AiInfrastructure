@@ -439,7 +439,8 @@ function buildCleanCodeSection() {
         "the most mechanical parts of this section on new frontend code — " +
         "`code-block-spacing` (a blank line between multi-line statements) " +
         "and `module-file-shape` (a new module that mixes type or constant " +
-        "declarations with logic) — and both only ask, never block. The " +
+        "declarations with logic) — and both are advisory: they leave a note " +
+        "and never stop the call. The " +
         "rest stays judgement: the codebase is mid-migration, and a rule " +
         "strict enough to catch mixing would fire on the very files nobody " +
         "has been given time to fix. It is expected of you anyway, on " +
@@ -862,10 +863,19 @@ function buildDelegationSection(agent, memoryEnabled = true) {
  * @param {object} rule A rule module, as `ruleRegistryStatus().rules` lists
  * it.
  * @returns {string} One `- ` bullet line naming the rule's id, its title,
- * its ceiling action, and any scope that narrows when it can even apply.
+ * its ceiling action, and any scope that narrows when it can even apply. A
+ * rule with `advisoryAsk` is marked `, advisory` after an `ask` ceiling, or
+ * opens its scope with "its `ask` is advisory" under any other ceiling; a
+ * rule without it renders no such mark.
  */
 function ruleLine(rule) {
   const scope = [];
+  let advisoryMark = "";
+  if (rule.advisoryAsk === true) {
+    if (rule.defaultAction === "ask") advisoryMark = ", advisory";
+    else scope.push("its `ask` is advisory");
+  }
+
   if (Array.isArray(rule.stacks) && rule.stacks.length) scope.push(rule.stacks.join("/"));
   if (rule.newCodeOnly) scope.push("new files only");
   if (rule.mandatory) scope.push("mandatory — cannot be softened by project config or override");
@@ -875,7 +885,7 @@ function ruleLine(rule) {
     scope.push(`silent until a repository's project config sets ${configPaths}`);
   }
   const scopeText = scope.length ? `; ${scope.join("; ")}` : "";
-  return item("- ", `\`${rule.id}\` — ${rule.title} (**${rule.defaultAction}** at most${scopeText}).`);
+  return item("- ", `\`${rule.id}\` — ${rule.title} (**${rule.defaultAction}** at most${advisoryMark}${scopeText}).`);
 }
 
 /** Human-readable label and reading order for each rule group. */
@@ -925,14 +935,21 @@ function buildEnforcementSection(agent, askMode) {
       "no native `ask`**: a rule below marked `ask` is enforced here as " +
       "a denial whose reason names the exact approval command, " +
       "`softela-ai approve <ruleId>`, run from the developer's own " +
-      "terminal — never from inside a tool call. `deny` below is never " +
-      "softened at all; only `softela-ai approve` (a person, in their own " +
-      "terminal) or a project's own override can change that.";
+      "terminal — never from inside a tool call. Two exceptions let the " +
+      "call proceed with a `softela-ai advisory` note instead: an `ask` " +
+      "from a rule marked **advisory**, and anything from a \"new files " +
+      "only\" rule acting on a file that already exists. Beyond those, " +
+      "`deny` below is never softened at all; only `softela-ai approve` " +
+      "(a person, in their own terminal) or a project's own override can " +
+      "change that.";
   } else {
     introText =
       "A blocked tool call is a rule doing its job, not a bug. On Claude " +
       "Code, `ask` below pauses the tool call itself and the developer " +
-      "decides right there; `deny` blocks it outright. The denial " +
+      "decides right there, and `deny` blocks it outright. Two exceptions " +
+      "let the call go ahead with the reason as a note instead: an `ask` " +
+      "from a rule marked **advisory**, and anything from a \"new files " +
+      "only\" rule acting on a file that already exists. The denial " +
       "always states the fix — follow it, rather than looking for a " +
       "way past the check that caught the mistake.";
   }

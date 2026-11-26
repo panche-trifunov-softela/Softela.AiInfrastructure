@@ -37,6 +37,26 @@ function flatten(text) {
   return text.replace(/\s+/g, " ");
 }
 
+/**
+ * Extracts one rule's rendered bullet from a generated body: the line that
+ * opens with its id, plus the indented continuation lines the word wrap adds.
+ *
+ * @param {string} body The generated rulebook body.
+ * @param {string} ruleId The rule's registry id.
+ * @returns {string | null} The bullet flattened to one line, or `null` when
+ * no bullet opens with that id.
+ */
+function ruleLineOf(body, ruleId) {
+  const lines = body.split("\n");
+  const start = lines.findIndex((l) => l.startsWith(`- \`${ruleId}\` — `));
+  if (start === -1) return null;
+
+  let end = start + 1;
+  while (end < lines.length && /^ {2}\S/.test(lines[end])) end++;
+
+  return flatten(lines.slice(start, end).join("\n"));
+}
+
 suite("installer/rulebook", ({ test, eq, ok, fakeHome }) => {
   test("the registry actually has rules to check against — a regression guard for the fixture itself", () => {
     ok(REGISTERED_RULES.length > 20, `expected a substantial rule registry, got ${REGISTERED_RULES.length}`);
@@ -191,6 +211,59 @@ suite("installer/rulebook", ({ test, eq, ok, fakeHome }) => {
       }
     });
   }
+
+  for (const agent of rulebook.AGENTS) {
+    test(`[${agent}] a rule with advisoryAsk is marked advisory in its own line, in the variant its defaultAction calls for, and no other rule is`, () => {
+      const body = rulebook.buildRulebookBody(agent);
+      const advisoryRules = REGISTERED_RULES.filter((r) => r.advisoryAsk === true);
+      ok(advisoryRules.length > 0, "expected at least one rule with advisoryAsk — a regression guard for the fixture itself");
+      ok(
+        advisoryRules.some((r) => r.defaultAction === "ask") && advisoryRules.some((r) => r.defaultAction !== "ask"),
+        "expected advisoryAsk rules with an ask ceiling and with another ceiling — both variants need coverage",
+      );
+
+      for (const rule of REGISTERED_RULES) {
+        const line = ruleLineOf(body, rule.id);
+        ok(line, `expected a rendered line for "${rule.id}"`);
+
+        if (rule.advisoryAsk !== true) {
+          const marked = line.slice(line.indexOf("(**"));
+          ok(!marked.includes("advisory"), `"${rule.id}" declares no advisoryAsk — its line must not say advisory`);
+        } else if (rule.defaultAction === "ask") {
+          ok(line.includes("(**ask** at most, advisory"), `expected "${rule.id}" to read "(**ask** at most, advisory", got: ${line}`);
+        } else {
+          ok(
+            line.includes(`(**${rule.defaultAction}** at most; its \`ask\` is advisory`),
+            `expected "${rule.id}" to read "(**${rule.defaultAction}** at most; its \`ask\` is advisory", got: ${line}`,
+          );
+        }
+      }
+    });
+  }
+
+  test("the Claude intro names both ways a call goes ahead with a note instead of stopping", () => {
+    const body = flatten(rulebook.buildRulebookBody("claude"));
+    ok(body.includes("Two exceptions let the call go ahead with the reason as a note instead"), "expected the exceptions to be introduced");
+    ok(body.includes("an `ask` from a rule marked **advisory**"), "expected the advisory-rule exception");
+    ok(body.includes('anything from a "new files only" rule acting on a file that already exists'), "expected the existing-file exception");
+  });
+
+  test("the Codex block-mode intro names both exceptions, and the advise-mode intro keeps its own text without them", () => {
+    const blockBody = flatten(rulebook.buildRulebookBody("codex"));
+    ok(blockBody.includes("Two exceptions let the call proceed with a `softela-ai advisory` note instead"), "expected the exceptions to be introduced");
+    ok(blockBody.includes("an `ask` from a rule marked **advisory**"), "expected the advisory-rule exception");
+    ok(blockBody.includes('anything from a "new files only" rule acting on a file that already exists'), "expected the existing-file exception");
+    ok(blockBody.includes("Beyond those, `deny` below is never softened at all"), "deny must still be described as never softened");
+
+    const adviseBody = flatten(rulebook.buildRulebookBody("codex", { askMode: "advise" }));
+    ok(!adviseBody.includes("Two exceptions"), "advise mode already lets every ask proceed — it must not describe exceptions");
+  });
+
+  test("the clean-code paragraph calls its two guards advisory rather than saying they only ask", () => {
+    const section = flatten(rulebook.buildCleanCodeSection());
+    ok(!section.includes("only ask, never block"), "the old wording claims a prompt these guards never raise");
+    ok(section.includes("both are advisory: they leave a note and never stop the call"), "expected the advisory wording");
+  });
 
   test("buildReuseSection's backend-language clause degrades to omission, never to the literal string \"undefined\", when conventions.language is absent", () => {
     eq(rulebook.formatBackendLanguageNote({}), "", "a missing conventions.language must format to an empty string, not interpolate undefined");

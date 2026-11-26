@@ -1092,6 +1092,93 @@ hook.
 Also denies deleting the state directory, and denies `chmod`/`icacls`-style
 permission changes against it.
 
+A statement that names the real `approvals.json` or `overrides.json` is denied
+unless it is read-only. An inline `node -e` or `python -c` script counts as
+read-only only when two things hold, and the second only ever adds to the
+first, so the test is strictly additive over the one this rule had before the
+per-language lists: nothing the old test denied can pass now.
+
+1. **The old test, kept exactly.** The old recogniser finds a script
+   (`node -e` / `--eval`, `python -c` or `python3 -c`, anywhere in the
+   statement; `-p`, `--print`, `-pe` and `-ep` are not recognised, so a
+   statement that uses them is not read-only), and the old write net
+   (`LEGACY_INLINE_WRITE_RE`) finds nothing in it. The net holds any `.write(`,
+   so a script that calls `process.stdout.write(`, or a Python one that calls
+   `sys.stdout.write(`, is no read-only script — output is not neutralised in
+   the deny half.
+2. **The new detections**, read on the statement as the command it actually
+   runs: a trailing unquoted shell comment is cut off and the value of every
+   leading `NAME=value` word is blanked (only the command substitutions in it,
+   which really run, are kept), so the words `node -e` in a comment or an
+   assigned string do not make a copy look like a read. A script is refused
+   when the word runs on past its closing quote (`fs.copyFi''leSync(…)`), and
+   when it was double-quoted and the shell expands something in it before the
+   interpreter sees it (`$(`, a backtick, `${NAME:-…}`, `${!NAME}`; a bare
+   `${NAME}` is a variable's value, a `$` or backtick after an odd number of
+   backslashes is escaped, and for the PowerShell tool the backtick is its own
+   escape character and is not tested) — a single-quoted script is literal
+   code, and a plain `$NAME` stays allowed. The one apostrophe splice a
+   single-quoted script can hold (`'a'"'"'b'`, the word `a'b`) is joined
+   before this reading; any other adjacent piece keeps refusing. A nested-shell wrapper
+   (`bash -c "node -e '…'"`) is judged by the scripts inside it, as the inner
+   shell reads them. Then the script's own language's list must find no file
+   change, no process start and no code loaded from outside the text. One list
+   per language, because Python's `.replace(` and `.rename(` would otherwise
+   catch ordinary JavaScript string code.
+
+Removal detection is the opposite: it recognises an interpreter anywhere in
+the statement as written, with both the old recogniser and the wider one that
+also takes `-p`, `--print`, `-pe` and `-ep`, because there recognising more is
+the safe direction.
+
+Node's list: the unambiguous long names (every `Sync` form of the `fs`
+writing names, `writeFile`, `appendFile`, `copyFile`, `writev`, any
+`*WriteStream`, `mkdtemp*`, `Utf8Stream`, `writeHeapSnapshot`, `writeReport`)
+anywhere in the script, strings and regular expressions included; an options
+key `flag`/`flags` whose value is a quoted mode that can write, and the `O_*`
+open constants; the short names (`rm`, `rename`, `mkdir`, `chmod` and the
+rest) only in an API position — a member call, `util.promisify(fs.rm)`, a
+destructuring or import list of an `fs`-specific name where a binding is
+written (after `const`/`let`/`var`, in an import list, as a parameter or as an
+assignment; nested, array-wrapped and quoted-key forms included), or a bracket
+string of an `fs`-specific name — so a shell verb inside a regular expression
+or a string, a bare call, a data field (`o.rules.mkdir`, `o.rules["write"]`),
+an object literal or a function body that holds a local named `cp` or `rm`,
+and a short name held in a string and used one step later (which the old test
+passed too) are not. A comment right after a member dot and a `with (` scope
+are read on the script with its string and template text blanked, so a label
+that holds them is not one. An `open`/`openSync` call is a write unless it
+passes at most one argument, `"r"`, `"rs"` or `O_RDONLY` as its second, or a
+callback function as its second (the form with no mode); and a `writeSync` to
+descriptor 1 or 2 is neutralised by the new detections, as the old test never
+counted it. Code loaded from outside the text counts (`eval`, `new Function`,
+`process.binding` and kin, a `require(` of anything but one plain module name
+or one `.json` literal, an `import(` of anything but one plain built-in name
+with an optional `node:` prefix and sub-path, `vm`, `child_process`,
+`worker_threads`, `cluster`, `inspector`, `module`, `repl`, `wasi` and
+`sqlite` by `require`, `import(` or `from`), and so do the built-in modules
+that are globals in `node -e` (`vm`, `cluster`, `inspector`, `repl`, `v8`,
+`wasi`, `trace_events`) — only as an object, a call or a spread, never as a
+bare word, so a loop variable, a string or a home folder named `dev-vm` is
+not one. Python's
+list covers `shutil`, `os`, pathlib-style methods, `.write(`, every process
+start, loaded code (`exec` and `eval` outside string literals, `importlib`,
+`runpy`, a wildcard import of `os`, `shutil`, `subprocess`, `pty`, `pathlib`
+or `io`, `__import__` unless it is given one literal module name that does not
+change files or load code, `getattr` on `os`, `shutil`, `pathlib` or `Path`
+unless it reads a literal harmless name), a module alias that is then used
+with a changing member, and the rarer writers (`fileinput` in place,
+`sqlite3`, `zipfile`, `tarfile`, `dbm` and `shelve` in an import or a member
+position only, `FileHandler`, `io.FileIO`, `GzipFile`, `urlretrieve`,
+`savetxt`, `basicConfig(filename=…)`, a pandas `.to_*(` that names a file, an
+assignment to `sys.stdout` or `sys.stderr` that is not a text wrapper over the
+stream's own buffer); every `open(` is read with balanced
+parentheses, so a nested `os.path.join(…)` does not hide the mode, and a mode
+that is not a literal counts as a write. `Path(…).rename(`/`.replace(` called
+directly are recognised; through an alias they are not. A call built at run
+time is disguised code and out of scope; the other open residuals are listed
+in `docs/internal/LIMITS.md`.
+
 The checks above are precise and statement-scoped — each shell statement is
 parsed and matched on its own. A raw-text conservative backstop covers the
 gap that scoping leaves open: a construct that puts the recognisable words in
@@ -1108,6 +1195,62 @@ ask on an ordinary grep pattern or commit message that merely mentions both
 words — accepted, since on this mandatory rule a false positive costs one
 prompt and a false negative defeats the rule the config layer can never
 soften.
+
+The backstop has one exception, and it is a shape: a command that is, from
+first character to last, a single `node -e` / `--eval` / `-p` / `--print`
+invocation with its code in single quotes (`isSealedReadOnlyNodeCommand`). It
+applies on the `Bash` tool only — Windows PowerShell rewrites embedded quotes
+and treats typographic quotes as single quotes, and a Codex shell tool's shell
+differs by platform, so node could run other code than the guard read there.
+The anchor is one test over the raw text, not statement parsing: nothing may
+precede `node` (no `cd`, no env prefix), nothing may follow the closing
+quote (no pipe, redirect, `;`, `&&`, comment or second line), and only spaces
+and tabs separate `node`, the flag and the quote — a newline there is a
+command separator in a POSIX shell. The code must
+name no way to run other code or start a process — `require` only of `fs`,
+`path`, `os`, `util` or `readline`; `process` only for `argv`, `env`,
+`stdout`, `stderr`, `exit`, `exitCode`, `cwd`, `platform`; none of `eval`,
+`Function`, `import`, `globalThis`, `this`, `constructor`, `child_process` and
+the rest of the list, and no Unicode escape inside an identifier — and no call
+that changes a file, by the same node list the deny half uses (with
+`process.stdout.write(` and `process.stderr.write(` removed first: this is the
+one place the exception reads them as output). The exception then adds checks
+the deny half does not have, because here a miss silences the backstop
+outright, and these stay in force however the deny half is tuned to spare a
+read:
+
+- every other built-in module used as a bare global (`vm`, `cluster`, `v8`,
+  `zlib`, `url`, and the rest of the running Node's own list, minus `fs`,
+  `path`, `os`, `util`, `readline`, `console` and `process`), as a whole word
+  not preceded by a single dot, so a spread (`{...vm}`) is seen;
+- a short file-changing name in any position — a member of any short name,
+  called or not, a bare call, a destructuring of any short name, the generic
+  `open`, `write` and `link` included, and a string that is exactly one;
+- the words `flag` and `flags` anywhere;
+- `new` of anything but `Map`, `Set`, `WeakMap`, `WeakSet`, `Date`, `RegExp`,
+  `Array`, `Object`, `Error`, `URL` or `Intl.<name>`, a call on a computed
+  member or on a call result (`](`, `)(`), and a tagged template;
+- a bracket subscript opening with an escaped string, two string literals
+  joined with `+`, a template placeholder opening with a literal, and the
+  words that assemble a name or walk to a constructor (`fromCharCode`,
+  `getPrototypeOf`, `getOwnPropertyNames`, `defineProperty` and kin);
+- `fs` as anything but `fs.<member>`: every occurrence of the identifier is the
+  one binding `const fs = require("fs")` or directly followed by a member
+  access (`fs.promises` by another), and every `require("fs")` is that
+  binding's initialiser or directly followed by a member access, so no
+  destructuring, spread, enumeration or alias of `fs` is left to chase;
+- an HTML-like comment (`<!--` anywhere, `-->` at the start of a line), which
+  Node reads as a line comment that can sit between a dot and a name;
+- the call-shape tests above run also on two copies of the code with its
+  comments removed, so a comment between the tokens hides nothing; and the
+  words `fetch`, `WebSocket`, `EventSource`, `WebAssembly`, `setPriority`,
+  `localStorage` and `sessionStorage`.
+
+It exists because a log-analysis script holding `rm` inside a regular
+expression beside the state directory's path asked every time. It does not
+bring statement scoping back: the backstop is there for evasions that rebuild
+a verb out of separate statements, and a sealed script has no statement, no
+shell and no capability to do that with.
 
 ### `shell-file-write` · deny / ask (advisory)
 Every file rule above this line — `doc-comment-style`, `no-explicit-any`,
